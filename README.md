@@ -53,20 +53,14 @@ Não é usado no desbloqueio do dia a dia (isso é papel do PIN)
 1. Stack
 
 
-Cross-platform: React Native ou Flutter (escolha final em aberto), pra agilizar o desenvolvimento no prazo do hackathon
-Lightning: implementado diretamente no app via Breez SDK — sem depender de Nostr Wallet Connect (NWC) nem de infraestrutura própria rodando. O app É a carteira, ponta a ponta
-Lightning Address: usado pra receber pagamentos de forma simples (formato tipo algo@dominio.com), facilitando o onramp via contato de confiança
-Identidade Nostr: cada instalação gera automaticamente um par de chaves novo (nsec descartável), sem vínculo com telefone/e-mail/identidade real, guardado em armazenamento seguro do sistema (Android Keystore / iOS Keychain)
-Nostr — canal de socorro: alerta de escape enviado via DM criptografada usando NIP-17 (protege inclusive metadados, ao contrário do NIP-04)
-NFC: chip NTAG regravável, compatível com padrão tipo Boltcard, guarda credencial/chave de acesso (não o saldo)
+Cross-platform: React Native
+Lightning: implementado diretamente no app via Breez SDK — sem depender de Nostr Wallet Connect (NWC) nem de infraestrutura própria rodando. O app É a carteira, ponta a ponta;
+Lightning Address: usado pra receber pagamentos de forma simples (formato tipo algo@dominio.com), facilitando o onramp via contato de confiança;
+Identidade Nostr: cada instalação gera automaticamente um par de chaves novo (nsec descartável), sem vínculo com telefone/e-mail/identidade real, guardado em armazenamento seguro do sistema (Android Keystore / iOS Keychain);
+Nostr — canal de socorro: alerta de escape enviado via DM criptografada usando NIP-17 (protege inclusive metadados, ao contrário do NIP-04);
+NFC: chip NTAG regravável, compatível com padrão tipo Boltcard, guarda credencial/chave de acesso (não o saldo);
 
 
-2. Documentação e deploy
-
-
-Código gerado com apoio do Claude Code
-Repositório e documentação no GitHub
-Teste do APK gerado via Appetize
 
 # Identidade Visual
 
