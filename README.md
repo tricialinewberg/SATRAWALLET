@@ -79,9 +79,8 @@ Critério geral: transmitir confiança e transparência (associação com azul),
 
 3. Logo
 
-<img width="1920" height="1080" alt="3" src="https://github.com/user-attachments/assets/28a4119e-60d1-4052-9956-f39d17de0e55" />
-<img width="1920" height="1080" alt="4" src="https://github.com/user-attachments/assets/f71007e7-3554-4bcc-a4b5-5823df4e7c7b" />
-<img width="1920" height="1080" alt="5" src="https://github.com/user-attachments/assets/ece7b09b-ce53-4d02-ba82-e154c106053e" />
+<img width="976" height="362" alt="Vector (1)" src="https://github.com/user-attachments/assets/40a192b2-ad9b-4bf1-83db-734c1d9b6505" />
+
 
 
 
