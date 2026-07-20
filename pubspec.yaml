@@ -28,10 +28,12 @@ dependencies:
   flutter_dotenv: ^5.2.1
 
   # Bitcoin Lightning wallet SDK (Breez, Nodeless/Spark implementation).
-  # Not published on pub.dev yet — pulled directly from the official repo.
+  # Not published on pub.dev yet — pulled directly from the official repo,
+  # pinned to a release tag so builds are reproducible.
   breez_sdk_spark_flutter:
     git:
       url: https://github.com/breez/breez-sdk-spark-flutter
+      ref: v0.19.0
 
   # Nostr protocol client (NIP-17/44/59 support) for the trusted-contacts escape alert.
   nostr: ^2.0.0
@@ -39,8 +41,19 @@ dependencies:
   # NFC read/write for the physical recovery key.
   nfc_manager: ^4.2.1
 
-  # Encrypted local storage (Android Keystore / iOS Keychain) for the PIN and Nostr keys.
+  # Encrypted local storage (Android Keystore / iOS Keychain) for the PIN,
+  # the wallet's recovery mnemonic, and Nostr keys.
   flutter_secure_storage: ^10.3.1
+
+  # BIP-39 mnemonic generation/validation for the wallet's recovery phrase.
+  # Maintained fork of the (now unmaintained) `bip39` package.
+  bip39_plus: ^1.1.1
+
+  # QR code rendering for the receive screen.
+  qr_flutter: ^4.1.0
+
+  # App-sandboxed storage directory for the Breez SDK's local data.
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

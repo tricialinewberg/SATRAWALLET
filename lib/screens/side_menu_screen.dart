@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../routes.dart';
+import '../services/breez_service.dart';
 import '../theme/colors.dart';
 
 /// Right-side drawer opened from [WalletHomeScreen]'s hamburger icon.
-/// Only "Traga sua carteira" (NFC restore) and "Trocar PIN" are wired —
+/// "Traga sua carteira" (view/restore mnemonic) and "Trocar PIN" are wired —
 /// the rest are placeholders until their screens/services exist.
 class SideMenuScreen extends StatelessWidget {
   const SideMenuScreen({super.key});
@@ -25,26 +27,43 @@ class SideMenuScreen extends StatelessWidget {
                 color: SatraColors.medium,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'LIGHTNING ADDRESS',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11, letterSpacing: 0.5),
+              child: FutureBuilder<String>(
+                future: BreezService.instance.getLightningAddress(),
+                builder: (context, snapshot) {
+                  final address = snapshot.data;
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'LIGHTNING ADDRESS',
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11, letterSpacing: 0.5),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              address ?? '···',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'alice@satra.io',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      if (address != null)
+                        GestureDetector(
+                          onTap: () async {
+                            await Clipboard.setData(ClipboardData(text: address));
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Endereço copiado')),
+                              );
+                            }
+                          },
+                          child: const Icon(Icons.copy_outlined, color: Colors.white70, size: 18),
                         ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.copy_outlined, color: Colors.white70, size: 18),
-                ],
+                    ],
+                  );
+                },
               ),
             ),
             const SizedBox(height: 8),
@@ -54,7 +73,7 @@ class SideMenuScreen extends StatelessWidget {
               label: 'Traga sua carteira',
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(context).pushNamed(SatraRoutes.nfcTransfer);
+                Navigator.of(context).pushNamed(SatraRoutes.walletBackup);
               },
             ),
             _MenuTile(icon: Icons.people_outline, label: 'Rede de confiança', onTap: () => Navigator.of(context).pop()),

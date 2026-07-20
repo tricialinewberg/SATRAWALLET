@@ -7,7 +7,9 @@ import 'screens/escape_confirmation_screen.dart';
 import 'screens/nfc_transfer_screen.dart';
 import 'screens/pin_setup_screen.dart';
 import 'screens/receive_screen.dart';
+import 'screens/send_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/wallet_backup_screen.dart';
 import 'screens/wallet_home_screen.dart';
 
 Future<void> main() async {
@@ -34,8 +36,10 @@ class MyApp extends StatelessWidget {
         SatraRoutes.pinSetup: (context) => const PinSetupScreen(),
         SatraRoutes.walletHome: (context) => const WalletHomeScreen(),
         SatraRoutes.receive: (context) => const ReceiveScreen(),
+        SatraRoutes.send: (context) => const SendScreen(),
         SatraRoutes.escapeConfirmation: (context) => const EscapeConfirmationScreen(),
         SatraRoutes.nfcTransfer: (context) => const NfcTransferScreen(),
+        SatraRoutes.walletBackup: (context) => const WalletBackupScreen(),
       },
     );
   }

@@ -7,6 +7,8 @@ class SatraRoutes {
   static const pinSetup = '/pin-setup';
   static const walletHome = '/wallet-home';
   static const receive = '/wallet-home/receive';
+  static const send = '/wallet-home/send';
   static const escapeConfirmation = '/wallet-home/escape-confirmation';
   static const nfcTransfer = '/wallet-home/nfc-transfer';
+  static const walletBackup = '/wallet-home/backup';
 }

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../routes.dart';
+import '../services/breez_service.dart';
 import '../theme/colors.dart';
 import 'side_menu_screen.dart';
 
-/// Main wallet screen (UI only — no Breez/Nostr wiring yet).
-/// Placeholder balance mirrors the Figma reference; real data comes later
-/// from services/breez_service.dart.
+/// Main wallet screen, backed by the real Breez SDK connection in
+/// [BreezService]: balance and its BRL estimate are live.
 class WalletHomeScreen extends StatefulWidget {
   const WalletHomeScreen({super.key});
 
@@ -16,9 +16,29 @@ class WalletHomeScreen extends StatefulWidget {
 
 class _WalletHomeScreenState extends State<WalletHomeScreen> {
   bool _balanceHidden = false;
+  late final Future<void> _connectFuture;
 
-  static const _placeholderSats = '128.500';
-  static const _placeholderFiat = 'R\$ 642,50';
+  @override
+  void initState() {
+    super.initState();
+    _connectFuture = BreezService.instance.initialize();
+  }
+
+  static String _formatThousands(int value) {
+    final digits = value.toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write('.');
+      buffer.write(digits[i]);
+    }
+    return buffer.toString();
+  }
+
+  static String _formatBrl(double value) {
+    final fixed = value.toStringAsFixed(2);
+    final parts = fixed.split('.');
+    return 'R\$ ${_formatThousands(int.parse(parts[0]))},${parts[1]}';
+  }
 
   void _openEscapeInfo() {
     showModalBottomSheet(
@@ -96,21 +116,69 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                     ),
                   ],
                 ),
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: _balanceHidden ? '*****' : _placeholderSats,
-                        style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: SatraColors.navy),
-                      ),
-                      const TextSpan(text: '  Sats', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SatraColors.navy)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '≈ ${_balanceHidden ? 'R\$ ****' : _placeholderFiat}',
-                  style: const TextStyle(color: SatraColors.medium, fontWeight: FontWeight.w600),
+                FutureBuilder<void>(
+                  future: _connectFuture,
+                  builder: (context, connectSnapshot) {
+                    if (connectSnapshot.connectionState != ConnectionState.done) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 14),
+                        child: SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: SatraColors.medium),
+                        ),
+                      );
+                    }
+                    if (connectSnapshot.hasError) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 14),
+                        child: Text(
+                          'Não foi possível conectar à carteira',
+                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                        ),
+                      );
+                    }
+                    return StreamBuilder<int>(
+                      stream: BreezService.instance.balanceStream,
+                      builder: (context, balanceSnapshot) {
+                        final sats = balanceSnapshot.data;
+                        final brlRate = BreezService.instance.cachedBrlPerBtc;
+                        final brlText = sats != null && brlRate != null
+                            ? _formatBrl(sats / 100000000 * brlRate)
+                            : null;
+
+                        return Column(
+                          children: [
+                            Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: _balanceHidden
+                                        ? '*****'
+                                        : (sats != null ? _formatThousands(sats) : '···'),
+                                    style: const TextStyle(
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.w900,
+                                      color: SatraColors.navy,
+                                    ),
+                                  ),
+                                  const TextSpan(
+                                    text: '  Sats',
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SatraColors.navy),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _balanceHidden ? '≈ R\$ ****' : '≈ ${brlText ?? '—'}',
+                              style: const TextStyle(color: SatraColors.medium, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
                 ),
                 const SizedBox(height: 20),
                 Row(
@@ -134,7 +202,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                       child: SizedBox(
                         height: 52,
                         child: OutlinedButton(
-                          onPressed: () {},
+                          onPressed: () => Navigator.of(context).pushNamed(SatraRoutes.send),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: SatraColors.navy,
                             side: const BorderSide(color: SatraColors.light),
