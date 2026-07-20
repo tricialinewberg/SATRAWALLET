@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../routes.dart';
 import '../theme/colors.dart';
 
-/// Shown right after the escape gesture completes. UI only — no real funds
-/// are moved and no Nostr alert is sent yet, that lives in services/ later.
-/// Per the product spec, the app quietly returns to looking like a plain
-/// calculator a few seconds after this screen is shown.
+/// Shown right after the escape gesture completes. By the time this screen
+/// is on screen, [WalletHomeScreen] has already fired off the balance send
+/// and the NIP-17 alert to trusted contacts in the background — this
+/// screen itself is purely the confirmation UI. Per the product spec, the
+/// app quietly returns to looking like a plain calculator a few seconds
+/// after this screen is shown.
 class EscapeConfirmationScreen extends StatefulWidget {
   const EscapeConfirmationScreen({super.key});
 

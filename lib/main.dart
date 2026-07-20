@@ -9,6 +9,7 @@ import 'screens/pin_setup_screen.dart';
 import 'screens/receive_screen.dart';
 import 'screens/send_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/trusted_contacts_screen.dart';
 import 'screens/wallet_backup_screen.dart';
 import 'screens/wallet_home_screen.dart';
 
@@ -40,6 +41,7 @@ class MyApp extends StatelessWidget {
         SatraRoutes.escapeConfirmation: (context) => const EscapeConfirmationScreen(),
         SatraRoutes.nfcTransfer: (context) => const NfcTransferScreen(),
         SatraRoutes.walletBackup: (context) => const WalletBackupScreen(),
+        SatraRoutes.trustedContacts: (context) => const TrustedContactsScreen(),
       },
     );
   }

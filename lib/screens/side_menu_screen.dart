@@ -6,8 +6,9 @@ import '../services/breez_service.dart';
 import '../theme/colors.dart';
 
 /// Right-side drawer opened from [WalletHomeScreen]'s hamburger icon.
-/// "Traga sua carteira" (view/restore mnemonic) and "Trocar PIN" are wired —
-/// the rest are placeholders until their screens/services exist.
+/// "Traga sua carteira" (view/restore mnemonic), "Rede de confiança"
+/// (trusted contacts) and "Trocar PIN" are wired — the rest are
+/// placeholders until their screens/services exist.
 class SideMenuScreen extends StatelessWidget {
   const SideMenuScreen({super.key});
 
@@ -76,7 +77,14 @@ class SideMenuScreen extends StatelessWidget {
                 Navigator.of(context).pushNamed(SatraRoutes.walletBackup);
               },
             ),
-            _MenuTile(icon: Icons.people_outline, label: 'Rede de confiança', onTap: () => Navigator.of(context).pop()),
+            _MenuTile(
+              icon: Icons.people_outline,
+              label: 'Rede de confiança',
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pushNamed(SatraRoutes.trustedContacts);
+              },
+            ),
             _MenuTile(
               icon: Icons.lock_outline,
               label: 'Trocar PIN',

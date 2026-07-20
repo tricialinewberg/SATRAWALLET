@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../routes.dart';
 import '../services/breez_service.dart';
+import '../services/nostr_service.dart';
 import '../theme/colors.dart';
 import 'side_menu_screen.dart';
 
@@ -86,10 +89,30 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   }
 
   void _onEscapeConfirmed() {
+    // Neither action is awaited here — the user must see the confirmation
+    // screen immediately, regardless of how long the Breez send or a slow
+    // Nostr relay takes.
+    unawaited(_sweepBalanceToSelf());
+    unawaited(NostrService.instance.sendEscapeAlert());
     Navigator.of(context).pushNamedAndRemoveUntil(
       SatraRoutes.escapeConfirmation,
       (route) => false,
     );
+  }
+
+  /// Sends the wallet's full balance to its own Lightning address. There is
+  /// no real "physical recovery key" destination yet (NFC read/transfer is
+  /// still UI-only), so this exercises the escape flow's send path without
+  /// moving funds to an invented destination.
+  Future<void> _sweepBalanceToSelf() async {
+    try {
+      final balance = await BreezService.instance.getBalance();
+      if (balance <= 0) return;
+      final address = await BreezService.instance.getLightningAddress();
+      await BreezService.instance.sendPayment(address, amountSats: balance);
+    } catch (_) {
+      // Best-effort — the confirmation screen is shown regardless of outcome.
+    }
   }
 
   @override
