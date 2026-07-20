@@ -21,6 +21,9 @@ jobs:
 
       - run: flutter pub get
 
+      - name: Create .env file
+        run: echo "BREEZ_API_KEY=${{ secrets.BREEZ_API_KEY }}" > .env
+
       - run: flutter build apk --release
 
       - uses: actions/upload-artifact@v4
