@@ -82,3 +82,44 @@ Critério geral: transmitir confiança e transparência (associação com azul),
 <img width="976" height="362" alt="Vector (1)" src="https://github.com/user-attachments/assets/40a192b2-ad9b-4bf1-83db-734c1d9b6505" />
 
 
+## Telas do app
+
+### Onboarding
+
+| Splash | Configuração do PIN |
+|---|---|
+| ![Splash](assets/screens/SPLASH.png) | ![Configuração do PIN](assets/screens/PRIMEIROS%20PASSOS%20-%205.png) |
+
+<details>
+<summary>Ver progressão do design (5 estados)</summary>
+
+![PIN vazio](assets/screens/PRIMEIROS%20PASSOS.png)
+![PIN 1 dígito](assets/screens/PRIMEIROS%20PASSOS%20-%202.png)
+![PIN 2 dígitos](assets/screens/PRIMEIROS%20PASSOS%20-%203.png)
+![PIN 3 dígitos](assets/screens/PRIMEIROS%20PASSOS%20-%204.png)
+![PIN completo](assets/screens/PRIMEIROS%20PASSOS%20-%205.png)
+
+</details>
+
+### Carteira
+
+| Wallet Home | Menu |
+|---|---|
+| ![Wallet Home](assets/screens/HOME.png) | ![Menu](assets/screens/MENU.png) |
+
+| Receber | Confirmação de escape |
+|---|---|
+| ![Receber](assets/screens/RECEBER%20QRCODE.png) | ![Confirmação do escape](assets/screens/CONFIRMAÇÃO.png) |
+
+<details>
+<summary>Ver detalhes da wallet (saldo oculto, popup de escape, swipe completo)</summary>
+
+![Saldo oculto](assets/screens/HOME%20-%202.png)
+![Popup de escape](assets/screens/HOME%20-%20pop%20up.png)
+![Swipe completo](assets/screens/HOME%20-%20swipe.png)
+
+</details>
+
+### Recuperação
+
+![Transferência via NFC](assets/screens/TRANFERIR%20CHAVE%20FÍSICA%20PARA%20CARTEIRA.png)
