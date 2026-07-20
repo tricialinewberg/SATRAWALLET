@@ -38,8 +38,10 @@ dependencies:
   # Nostr protocol client (NIP-17/44/59 support) for the trusted-contacts escape alert.
   nostr: ^2.0.0
 
-  # NFC read/write for the physical recovery key.
+  # NFC read/write for the physical recovery key. nfc_manager 4.x split the
+  # cross-platform NDEF abstraction out into its own companion package.
   nfc_manager: ^4.2.1
+  nfc_manager_ndef: ^1.1.0
 
   # Encrypted local storage (Android Keystore / iOS Keychain) for the PIN,
   # the wallet's recovery mnemonic, and Nostr keys.

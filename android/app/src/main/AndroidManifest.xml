@@ -3,6 +3,8 @@
          builds already get this via their own manifest overlays, but
          release builds only use this file. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Required to read/write the physical recovery key tag. -->
+    <uses-permission android:name="android.permission.NFC"/>
     <application
         android:label="xiaomi_calculator_flutter"
         android:name="${applicationName}"

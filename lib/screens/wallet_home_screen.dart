@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../routes.dart';
 import '../services/breez_service.dart';
+import '../services/nfc_service.dart';
 import '../services/nostr_service.dart';
 import '../theme/colors.dart';
 import 'side_menu_screen.dart';
@@ -89,21 +90,38 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   }
 
   void _onEscapeConfirmed() {
-    // Neither action is awaited here — the user must see the confirmation
-    // screen immediately, regardless of how long the Breez send or a slow
-    // Nostr relay takes.
+    // None of these are awaited — the user must see the confirmation screen
+    // immediately, regardless of how long the Breez send, a slow Nostr
+    // relay, or waiting for an NFC tag takes.
     unawaited(_sweepBalanceToSelf());
     unawaited(NostrService.instance.sendEscapeAlert());
+    unawaited(_writeRecoveryKeyToTag());
     Navigator.of(context).pushNamedAndRemoveUntil(
       SatraRoutes.escapeConfirmation,
       (route) => false,
     );
   }
 
-  /// Sends the wallet's full balance to its own Lightning address. There is
-  /// no real "physical recovery key" destination yet (NFC read/transfer is
-  /// still UI-only), so this exercises the escape flow's send path without
-  /// moving funds to an invented destination.
+  /// Opportunistically writes the wallet's recovery mnemonic to a physical
+  /// NFC key, if one happens to be presented within the write timeout. The
+  /// user may not have the key on hand at the exact moment they escape, so
+  /// this is a best-effort extra — not a hard dependency of the escape
+  /// flow, and its result (including the iOS "writing isn't supported"
+  /// case) is never surfaced to the UI.
+  Future<void> _writeRecoveryKeyToTag() async {
+    try {
+      final mnemonic = await BreezService.instance.getMnemonic();
+      if (mnemonic == null || mnemonic.isEmpty) return;
+      await NfcService.instance.writeRecoveryCredential(mnemonic);
+    } catch (_) {
+      // Best-effort — see doc comment above.
+    }
+  }
+
+  /// Sends the wallet's full balance to its own Lightning address. This
+  /// wallet's mnemonic is what actually gets written to the physical key
+  /// (see [_writeRecoveryKeyToTag]) — this self-send just exercises the
+  /// Breez send path without moving funds to an invented destination.
   Future<void> _sweepBalanceToSelf() async {
     try {
       final balance = await BreezService.instance.getBalance();
