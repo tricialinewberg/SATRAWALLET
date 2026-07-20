@@ -82,5 +82,24 @@ Critério geral: transmitir confiança e transparência (associação com azul),
 <img width="976" height="362" alt="Vector (1)" src="https://github.com/user-attachments/assets/40a192b2-ad9b-4bf1-83db-734c1d9b6505" />
 
 
+## Telas do app
 
+### Onboarding
 
+| Splash | Configuração do PIN |
+|---|---|
+| ![Splash](assets/screens/01-splash.png) | ![Configuração do PIN](assets/screens/02-pin-setup-4.png) |
+
+### Carteira
+
+| Wallet Home | Menu |
+|---|---|
+| ![Wallet Home](assets/screens/03-wallet-home.png) | ![Menu](assets/screens/04-menu.png) |
+
+| Receber | Confirmação de escape |
+|---|---|
+| ![Receber](assets/screens/05-receber.png) | ![Confirmação do escape](assets/screens/06-escape-confirmacao.png) |
+
+### Recuperação
+
+![Transferência via NFC](assets/screens/07-nfc-transferencia.png)
