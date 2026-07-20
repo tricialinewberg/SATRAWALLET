@@ -1,0 +1,12 @@
+/// Central place for named-route strings so screens don't duplicate magic values.
+class SatraRoutes {
+  SatraRoutes._();
+
+  static const calculator = '/';
+  static const splash = '/splash';
+  static const pinSetup = '/pin-setup';
+  static const walletHome = '/wallet-home';
+  static const receive = '/wallet-home/receive';
+  static const escapeConfirmation = '/wallet-home/escape-confirmation';
+  static const nfcTransfer = '/wallet-home/nfc-transfer';
+}

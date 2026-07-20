@@ -24,6 +24,24 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.9
 
+  # Environment variables (.env)
+  flutter_dotenv: ^5.2.1
+
+  # Bitcoin Lightning wallet SDK (Breez, Nodeless/Spark implementation).
+  # Not published on pub.dev yet — pulled directly from the official repo.
+  breez_sdk_spark_flutter:
+    git:
+      url: https://github.com/breez/breez-sdk-spark-flutter
+
+  # Nostr protocol client (NIP-17/44/59 support) for the trusted-contacts escape alert.
+  nostr: ^2.0.0
+
+  # NFC read/write for the physical recovery key.
+  nfc_manager: ^4.2.1
+
+  # Encrypted local storage (Android Keystore / iOS Keychain) for the PIN and Nostr keys.
+  flutter_secure_storage: ^10.3.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -44,6 +62,8 @@ flutter:
   # assets:
   #  - images/a_dot_burr.jpeg
   #  - images/a_dot_ham.jpeg
+  assets:
+    - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware.
