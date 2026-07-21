@@ -19,6 +19,7 @@ class BreezService {
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   final StreamController<int> _balanceController = StreamController<int>.broadcast();
+  final StreamController<List<Payment>> _paymentsController = StreamController<List<Payment>>.broadcast();
 
   BreezSdk? _sdk;
   StreamSubscription<SdkEvent>? _eventSubscription;
@@ -28,6 +29,10 @@ class BreezService {
   /// Emits the wallet balance (in sats) right after connecting, and again
   /// whenever a payment lands or the wallet re-syncs while the app is open.
   Stream<int> get balanceStream => _balanceController.stream;
+
+  /// Emits the most recent payments (newest first) right after connecting,
+  /// and again whenever a payment lands or the wallet re-syncs.
+  Stream<List<Payment>> get paymentsStream => _paymentsController.stream;
 
   bool get isConnected => _sdk != null;
 
@@ -72,6 +77,7 @@ class BreezService {
         case SdkEvent_NewDeposits():
         case SdkEvent_ClaimedDeposits():
           unawaited(_refreshBalance());
+          unawaited(_refreshPayments());
           break;
         default:
           break;
@@ -79,6 +85,7 @@ class BreezService {
     });
 
     await _refreshBalance();
+    await _refreshPayments();
     _cachedBrlPerBtc = await _fetchBrlPerBtc();
   }
 
@@ -100,6 +107,16 @@ class BreezService {
   Future<void> _refreshBalance() async {
     final info = await _requireSdk.getInfo(request: const GetInfoRequest(ensureSynced: false));
     _balanceController.add(info.balanceSats.toInt());
+  }
+
+  /// Recent payments, newest first. Kept small — this only backs the
+  /// "Transações recentes" summary on the wallet home screen, not a full
+  /// history view.
+  Future<void> _refreshPayments() async {
+    final response = await _requireSdk.listPayments(
+      request: const ListPaymentsRequest(limit: 20, sortAscending: false),
+    );
+    _paymentsController.add(response.payments);
   }
 
   /// Current balance in sats.
@@ -145,10 +162,25 @@ class BreezService {
     return response.paymentRequest;
   }
 
+  /// Parses a pasted destination (invoice, Lightning/on-chain/Spark
+  /// address, LNURL, ...) so the caller can tell what kind of payment it
+  /// is — in particular, whether it already carries its own amount or the
+  /// user must supply one (see `SendScreen`'s use of this).
+  Future<InputType> parseInput(String input) async {
+    await initialize();
+    return _requireSdk.parse(input: input.trim());
+  }
+
   /// Sends a payment to a pasted Lightning invoice or address.
   /// [amountSats] is required for amount-less destinations (e.g. a bare
-  /// Lightning Address) and optional otherwise (e.g. a fixed-amount invoice).
+  /// Lightning Address or an on-chain Bitcoin address) and optional
+  /// otherwise (e.g. a fixed-amount invoice).
+  ///
+  /// Calls [initialize] first — a screen can otherwise reach this before
+  /// [WalletHomeScreen]'s own connect call has finished, which used to
+  /// throw a [StateError] straight out of [_requireSdk].
   Future<Payment> sendPayment(String invoiceOrAddress, {int? amountSats}) async {
+    await initialize();
     final sdk = _requireSdk;
     final prepareResponse = await sdk.prepareSendPayment(
       request: PrepareSendPaymentRequest(
@@ -160,6 +192,7 @@ class BreezService {
       request: SendPaymentRequest(prepareResponse: prepareResponse),
     );
     await _refreshBalance();
+    await _refreshPayments();
     return response.payment;
   }
 

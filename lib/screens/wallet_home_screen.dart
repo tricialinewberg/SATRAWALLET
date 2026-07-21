@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart';
 import 'package:flutter/material.dart';
 
 import '../routes.dart';
@@ -8,6 +9,16 @@ import '../services/nfc_service.dart';
 import '../services/nostr_service.dart';
 import '../theme/colors.dart';
 import 'side_menu_screen.dart';
+
+String _formatThousands(int value) {
+  final digits = value.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write('.');
+    buffer.write(digits[i]);
+  }
+  return buffer.toString();
+}
 
 /// Main wallet screen, backed by the real Breez SDK connection in
 /// [BreezService]: balance and its BRL estimate are live.
@@ -26,16 +37,6 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   void initState() {
     super.initState();
     _connectFuture = BreezService.instance.initialize();
-  }
-
-  static String _formatThousands(int value) {
-    final digits = value.toString();
-    final buffer = StringBuffer();
-    for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write('.');
-      buffer.write(digits[i]);
-    }
-    return buffer.toString();
   }
 
   static String _formatBrl(double value) {
@@ -271,13 +272,36 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: SatraColors.light),
                     ),
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.history, color: SatraColors.light, size: 32),
-                        SizedBox(height: 10),
-                        Text('Nenhuma transação ainda', style: TextStyle(color: Colors.black54)),
-                      ],
+                    child: StreamBuilder<List<Payment>>(
+                      stream: BreezService.instance.paymentsStream,
+                      builder: (context, paymentsSnapshot) {
+                        final payments = paymentsSnapshot.data;
+                        if (payments == null) {
+                          return const Center(
+                            child: SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: SatraColors.medium),
+                            ),
+                          );
+                        }
+                        if (payments.isEmpty) {
+                          return const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.history, color: SatraColors.light, size: 32),
+                              SizedBox(height: 10),
+                              Text('Nenhuma transação ainda', style: TextStyle(color: Colors.black54)),
+                            ],
+                          );
+                        }
+                        return ListView.separated(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          itemCount: payments.length,
+                          separatorBuilder: (context, index) => const Divider(height: 1, color: SatraColors.background),
+                          itemBuilder: (context, index) => _TransactionRow(payment: payments[index]),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -367,6 +391,75 @@ class _EscapeSliderState extends State<_EscapeSlider> {
           ),
         );
       },
+    );
+  }
+}
+
+/// A single row in "Transações recentes".
+class _TransactionRow extends StatelessWidget {
+  final Payment payment;
+
+  const _TransactionRow({required this.payment});
+
+  static const _receiveColor = Color(0xFF3FBF6F);
+  static const _failedColor = Color(0xFFD64545);
+
+  static String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  @override
+  Widget build(BuildContext context) {
+    final isReceive = payment.paymentType == PaymentType.receive;
+    final color = payment.status == PaymentStatus.failed
+        ? _failedColor
+        : (isReceive ? _receiveColor : SatraColors.navy);
+    final icon = isReceive ? Icons.arrow_downward : Icons.arrow_upward;
+    final sign = isReceive ? '+' : '-';
+
+    // Assumes Payment.timestamp is Unix seconds (matches every other
+    // timestamp convention already used in this codebase, e.g. Nostr's
+    // created_at) — the Breez SDK docs don't state the unit explicitly.
+    final date = DateTime.fromMillisecondsSinceEpoch(payment.timestamp.toInt() * 1000);
+    final dateText =
+        '${_twoDigits(date.day)}/${_twoDigits(date.month)} ${_twoDigits(date.hour)}:${_twoDigits(date.minute)}';
+    final statusSuffix = switch (payment.status) {
+      PaymentStatus.pending => ' · pendente',
+      PaymentStatus.failed => ' · falhou',
+      PaymentStatus.completed => '',
+    };
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isReceive ? 'Recebido' : 'Enviado',
+                  style: const TextStyle(fontWeight: FontWeight.w600, color: SatraColors.navy),
+                ),
+                Text(
+                  '$dateText$statusSuffix',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '$sign${_formatThousands(payment.amount.toInt())} sats',
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
+          ),
+        ],
+      ),
     );
   }
 }
