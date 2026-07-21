@@ -34,22 +34,13 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: SatraColors.navy,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.bolt, color: Colors.white, size: 34),
-              ),
-              const SizedBox(width: 12),
+              const Icon(Icons.bolt, color: SatraColors.medium, size: 110),
+              const SizedBox(width: 14),
               const Text(
                 'SATRA',
                 style: TextStyle(
-                  color: SatraColors.navy,
-                  fontSize: 36,
+                  color: SatraColors.medium,
+                  fontSize: 64,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1,
                 ),
