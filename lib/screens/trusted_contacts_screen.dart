@@ -215,6 +215,7 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _labelController,
+              style: const TextStyle(color: SatraColors.navy),
               decoration: InputDecoration(
                 hintText: 'Nome (ex: Amiga Ana)',
                 filled: true,
@@ -229,6 +230,7 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
             TextField(
               controller: _npubController,
               autocorrect: false,
+              style: const TextStyle(color: SatraColors.navy),
               decoration: InputDecoration(
                 hintText: 'npub1...',
                 filled: true,

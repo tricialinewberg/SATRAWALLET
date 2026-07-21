@@ -258,6 +258,7 @@ class _SendScreenState extends State<SendScreen> {
                       controller: _destinationController,
                       minLines: 3,
                       maxLines: 5,
+                      style: const TextStyle(color: SatraColors.navy),
                       decoration: const InputDecoration(
                         hintText: 'Fatura Lightning, endereço Lightning, Bitcoin ou Spark',
                         border: InputBorder.none,
@@ -336,6 +337,7 @@ class _SendScreenState extends State<SendScreen> {
               TextField(
                 controller: _amountController,
                 keyboardType: TextInputType.number,
+                style: const TextStyle(color: SatraColors.navy),
                 decoration: InputDecoration(
                   hintText: 'Necessário para este destino',
                   filled: true,

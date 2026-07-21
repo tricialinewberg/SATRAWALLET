@@ -47,6 +47,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
           controller: controller,
           autofocus: true,
           keyboardType: TextInputType.number,
+          style: const TextStyle(color: SatraColors.navy),
           decoration: const InputDecoration(labelText: 'Valor em sats'),
         ),
         actions: [

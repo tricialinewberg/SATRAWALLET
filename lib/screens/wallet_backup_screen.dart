@@ -214,6 +214,7 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
               controller: _restoreController,
               minLines: 2,
               maxLines: 4,
+              style: const TextStyle(color: SatraColors.navy),
               decoration: InputDecoration(
                 hintText: 'palavra1 palavra2 palavra3 ...',
                 filled: true,
