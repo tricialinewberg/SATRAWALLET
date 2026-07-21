@@ -16,10 +16,23 @@ class EscapeConfirmationScreen extends StatefulWidget {
   State<EscapeConfirmationScreen> createState() => _EscapeConfirmationScreenState();
 }
 
-class _EscapeConfirmationScreenState extends State<EscapeConfirmationScreen> {
+class _EscapeConfirmationScreenState extends State<EscapeConfirmationScreen>
+    with SingleTickerProviderStateMixin {
+  static const _entranceDuration = Duration(milliseconds: 380);
+
+  late final AnimationController _entranceController;
+  late final Animation<double> _entranceOpacity;
+  late final Animation<double> _entranceScale;
+
   @override
   void initState() {
     super.initState();
+    _entranceController = AnimationController(vsync: this, duration: _entranceDuration);
+    final curved = CurvedAnimation(parent: _entranceController, curve: Curves.easeOut);
+    _entranceOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(curved);
+    _entranceScale = Tween<double>(begin: 0.8, end: 1.0).animate(curved);
+    _entranceController.forward();
+
     Future.delayed(const Duration(seconds: 4), () {
       if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil(
@@ -27,6 +40,12 @@ class _EscapeConfirmationScreenState extends State<EscapeConfirmationScreen> {
         (route) => false,
       );
     });
+  }
+
+  @override
+  void dispose() {
+    _entranceController.dispose();
+    super.dispose();
   }
 
   @override
@@ -39,39 +58,58 @@ class _EscapeConfirmationScreenState extends State<EscapeConfirmationScreen> {
           child: Column(
             children: [
               const Spacer(flex: 3),
-              Container(
-                width: 96,
-                height: 96,
-                decoration: const BoxDecoration(color: Color(0xFF3FBF6F), shape: BoxShape.circle),
-                child: const Icon(Icons.check, color: Colors.white, size: 48),
-              ),
-              const SizedBox(height: 28),
-              const Text(
-                'Saldo enviado para sua chave física',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: SatraColors.navy),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Sua rede de confiança foi notificada',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: SatraColors.medium, fontWeight: FontWeight.w600),
+              FadeTransition(
+                opacity: _entranceOpacity,
+                child: ScaleTransition(
+                  scale: _entranceScale,
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 96,
+                        height: 96,
+                        decoration: const BoxDecoration(color: Color(0xFF3FBF6F), shape: BoxShape.circle),
+                        child: const Icon(Icons.check, color: Colors.white, size: 48),
+                      ),
+                      const SizedBox(height: 28),
+                      const Text(
+                        'Saldo enviado para sua chave física',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: SatraColors.navy),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Sua rede de confiança foi notificada',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 15, color: SatraColors.medium, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const Spacer(flex: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: SatraColors.light),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.shield_outlined, size: 16, color: SatraColors.medium),
-                    SizedBox(width: 8),
-                    Text('PROTOCOLO DE SEGURANÇA ATIVO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: SatraColors.medium)),
-                  ],
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: SatraColors.light),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.shield_outlined, size: 16, color: SatraColors.medium),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'PROTOCOLO DE SEGURANÇA ATIVO',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: SatraColors.medium),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
