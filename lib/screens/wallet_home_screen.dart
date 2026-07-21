@@ -322,7 +322,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
 }
 
 /// Slide-to-confirm control for the emergency escape. Requires a deliberate
-/// drag to the end (not a tap) so it can't be triggered by accident.
+/// drag to the end (not a tap) so it can't be triggered by accident. Once
+/// the drag threshold is reached, plays a brief settle+pulse animation
+/// before calling [onConfirmed] — a beat of "confirmed" feedback instead of
+/// cutting straight to the next screen.
 class _EscapeSlider extends StatefulWidget {
   final VoidCallback onConfirmed;
 
@@ -332,63 +335,127 @@ class _EscapeSlider extends StatefulWidget {
   State<_EscapeSlider> createState() => _EscapeSliderState();
 }
 
-class _EscapeSliderState extends State<_EscapeSlider> {
+class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderStateMixin {
   double _dragFraction = 0;
+  double _dragFractionAtRelease = 0;
+  bool _completing = false;
+  late final AnimationController _successController;
+
   static const _trackHeight = 56.0;
   static const _handleSize = 44.0;
+  static const _successDuration = Duration(milliseconds: 320);
+
+  // The handle finishes settling at the end of the track over the first
+  // half of the animation; the pulse/checkmark plays over the back half,
+  // once it's already there.
+  static const _settleCurve = Interval(0.0, 0.5, curve: Curves.easeOut);
+  static const _pulseCurve = Interval(0.45, 1.0, curve: Curves.easeOut);
+  static const _checkThreshold = 0.5;
+
+  @override
+  void initState() {
+    super.initState();
+    _successController = AnimationController(vsync: this, duration: _successDuration);
+  }
+
+  @override
+  void dispose() {
+    _successController.dispose();
+    super.dispose();
+  }
+
+  void _playSuccessThenConfirm() {
+    _dragFractionAtRelease = _dragFraction;
+    setState(() => _completing = true);
+    _successController.forward(from: 0).whenComplete(() {
+      if (!mounted) return;
+      widget.onConfirmed();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxDrag = constraints.maxWidth - _handleSize - 8;
-        return Container(
-          height: _trackHeight,
-          decoration: BoxDecoration(
-            color: Color.lerp(Colors.white, SatraColors.navy, _dragFraction),
-            borderRadius: BorderRadius.circular(_trackHeight / 2),
-            border: Border.all(color: SatraColors.light),
-          ),
-          child: Stack(
-            alignment: Alignment.centerLeft,
-            children: [
-              Center(
-                child: Text(
-                  'deslize para o modo de escape',
-                  style: TextStyle(
-                    color: Color.lerp(SatraColors.navy, Colors.white, _dragFraction),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+        return AnimatedBuilder(
+          animation: _successController,
+          builder: (context, _) {
+            final t = _successController.value.clamp(0.0, 1.0);
+
+            final settleT = _settleCurve.transform(t);
+            final fraction =
+                _completing ? _dragFractionAtRelease + (1.0 - _dragFractionAtRelease) * settleT : _dragFraction;
+
+            // Rises to a peak mid-pulse then eases back down — a quick
+            // "thump" on the handle rather than a lasting size change.
+            final pulseT = _pulseCurve.transform(t);
+            final pulse = _completing ? (1 - (pulseT - 0.5).abs() * 2).clamp(0.0, 1.0) : 0.0;
+            final handleScale = 1.0 + pulse * 0.22;
+
+            final showCheck = _completing && t >= _checkThreshold;
+
+            return Container(
+              height: _trackHeight,
+              decoration: BoxDecoration(
+                color: Color.lerp(Colors.white, SatraColors.navy, fraction),
+                borderRadius: BorderRadius.circular(_trackHeight / 2),
+                border: Border.all(color: SatraColors.light),
               ),
-              Padding(
-                padding: const EdgeInsets.all(4),
-                child: GestureDetector(
-                  onHorizontalDragUpdate: (details) {
-                    setState(() {
-                      _dragFraction = ((_dragFraction * maxDrag) + details.delta.dx) / maxDrag;
-                      _dragFraction = _dragFraction.clamp(0.0, 1.0);
-                    });
-                  },
-                  onHorizontalDragEnd: (details) {
-                    if (_dragFraction > 0.85) {
-                      widget.onConfirmed();
-                    }
-                    setState(() => _dragFraction = 0);
-                  },
-                  child: Transform.translate(
-                    offset: Offset(_dragFraction * maxDrag, 0),
-                    child: Container(
-                      width: _handleSize,
-                      height: _handleSize,
-                      decoration: const BoxDecoration(color: SatraColors.navy, shape: BoxShape.circle),
-                      child: const Icon(Icons.arrow_forward, color: Colors.white, size: 20),
+              child: Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  Center(
+                    child: Text(
+                      'deslize para o modo de escape',
+                      style: TextStyle(
+                        color: Color.lerp(SatraColors.navy, Colors.white, fraction),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: GestureDetector(
+                      onHorizontalDragUpdate: _completing
+                          ? null
+                          : (details) {
+                              setState(() {
+                                _dragFraction = ((_dragFraction * maxDrag) + details.delta.dx) / maxDrag;
+                                _dragFraction = _dragFraction.clamp(0.0, 1.0);
+                              });
+                            },
+                      onHorizontalDragEnd: _completing
+                          ? null
+                          : (details) {
+                              if (_dragFraction > 0.85) {
+                                _playSuccessThenConfirm();
+                              } else {
+                                setState(() => _dragFraction = 0);
+                              }
+                            },
+                      child: Transform.translate(
+                        offset: Offset(fraction * maxDrag, 0),
+                        child: Transform.scale(
+                          scale: handleScale,
+                          child: Container(
+                            width: _handleSize,
+                            height: _handleSize,
+                            decoration: const BoxDecoration(color: SatraColors.navy, shape: BoxShape.circle),
+                            child: Icon(
+                              showCheck ? Icons.check : Icons.arrow_forward,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
