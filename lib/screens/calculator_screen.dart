@@ -8,7 +8,7 @@ import '../widgets/calculator_button.dart';
 /// while no personal PIN has been configured yet. Digits are compared
 /// against the raw keystrokes (see [_rawInput]), not the collapsed display
 /// value, so a leading zero isn't lost the way a real calculator would lose it.
-const _masterSequence = '0210';
+const _masterSequence = '5893';
 
 class CalculatorScreen extends StatefulWidget {
   const CalculatorScreen({super.key});
