@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../services/breez_service.dart';
 import '../services/nfc_service.dart';
 import '../theme/colors.dart';
+import '../widgets/nfc_password_prompt.dart';
 
 /// Fund-safety net for a failed/interrupted escape NFC write.
 ///
@@ -39,12 +40,15 @@ class _PendingEscapeRecoveryScreenState extends State<PendingEscapeRecoveryScree
   }
 
   Future<void> _retryWrite(String mnemonic) async {
+    final password = await promptForNfcKeyPassword(context, title: 'Senha para gravar a chave');
+    if (!mounted || password == null || password.isEmpty) return;
+
     setState(() {
       _writing = true;
       _lastResult = null;
     });
 
-    final result = await NfcService.instance.writeRecoveryCredential(mnemonic);
+    final result = await NfcService.instance.writeRecoveryCredential(mnemonic, password: password);
     if (!mounted) return;
 
     if (result == NfcWriteResult.success) {
@@ -77,6 +81,8 @@ class _PendingEscapeRecoveryScreenState extends State<PendingEscapeRecoveryScree
         NfcWriteResult.writeNotSupportedOnPlatform => 'Este aparelho não permite gravar chaves NFC.',
         NfcWriteResult.tagNotWritable => 'A chave não aceitou a gravação (bloqueada ou incompatível).',
         NfcWriteResult.timedOut => 'Nenhuma chave foi detectada a tempo. Tente encostar novamente.',
+        NfcWriteResult.verificationFailed =>
+          'A gravação não pôde ser confirmada. Encoste a chave novamente e tente de novo.',
         NfcWriteResult.failed => 'Falha ao gravar. Tente novamente.',
       };
 

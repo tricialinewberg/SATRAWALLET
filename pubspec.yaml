@@ -56,6 +56,7 @@ dependencies:
 
   # App-sandboxed storage directory for the Breez SDK's local data.
   path_provider: ^2.1.6
+  cryptography: ^2.9.0
 
 dev_dependencies:
   flutter_test:

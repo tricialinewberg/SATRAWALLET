@@ -109,6 +109,14 @@ class SideMenuScreen extends StatelessWidget {
                 Navigator.of(context).pushNamed(SatraRoutes.pinSetup);
               },
             ),
+            _MenuTile(
+              icon: Icons.key,
+              label: 'Senha da chave física',
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pushNamed(SatraRoutes.nfcKeyPasswordSetup);
+              },
+            ),
             _MenuTile(icon: Icons.headset_mic_outlined, label: 'Support', onTap: () => Navigator.of(context).pop()),
             _MenuTile(icon: Icons.info_outline, label: 'Sobre o app', onTap: () => Navigator.of(context).pop()),
             _MenuTile(icon: Icons.settings_outlined, label: 'Configurações', onTap: () => Navigator.of(context).pop()),

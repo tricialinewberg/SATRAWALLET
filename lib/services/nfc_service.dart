@@ -6,12 +6,15 @@ import 'package:nfc_manager/ndef_record.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import 'package:nfc_manager_ndef/nfc_manager_ndef.dart';
 
+import 'nfc_credential_crypto.dart';
+
 /// Outcome of a [NfcService.writeRecoveryCredential] attempt. A typed result
 /// instead of exceptions/booleans so callers can show a specific message
 /// (or, in the escape flow, silently ignore all of them — see
 /// `WalletHomeScreen._sweepToNewWalletAndWriteTag`).
 enum NfcWriteResult {
-  /// The mnemonic was written to the tag.
+  /// The encrypted credential was written AND a read-back+decrypt of the
+  /// tag afterward reproduced the original mnemonic exactly.
   success,
 
   /// No NFC hardware, or NFC is turned off in system settings.
@@ -28,12 +31,23 @@ enum NfcWriteResult {
   /// No tag was presented within the timeout.
   timedOut,
 
-  /// Any other failure (session error, transceive failure, ...).
+  /// The write itself reported success, but re-reading and decrypting the
+  /// tag right afterward didn't reproduce the original mnemonic — either
+  /// the tag wasn't re-presented in time for the verification read, or it
+  /// genuinely didn't retain what was written. Treated the same as any
+  /// other non-success: the caller must NOT treat the credential as safely
+  /// on the tag.
+  verificationFailed,
+
+  /// Any other failure (session error, transceive failure, encryption
+  /// error, ...).
   failed,
 }
 
-/// Owns NFC read/write for the physical recovery key: writing the wallet's
-/// mnemonic to a tag as an NDEF text record, and reading it back.
+/// Owns NFC read/write for the physical recovery key: encrypting the
+/// wallet's mnemonic into a versioned envelope (see [NfcCredentialCrypto])
+/// before writing it to a tag as an NDEF text record, and reading it back.
+/// The mnemonic itself is never written to a tag in plaintext.
 ///
 /// ## Platform limitation: writing is Android-only
 ///
@@ -62,6 +76,17 @@ class NfcService {
   static final NfcService instance = NfcService._();
 
   static const _writeTimeout = Duration(seconds: 20);
+
+  /// Timeout for the read-back verification pass that follows a write.
+  /// Shorter than [_writeTimeout] since the tag is (usually) still resting
+  /// against the phone right after the write completes.
+  static const _verifyReadTimeout = Duration(seconds: 12);
+
+  /// Brief pause between closing the write session and opening the
+  /// verification read session, so the platform has a moment to fully
+  /// release the NFC field before a new session claims it.
+  static const _interSessionPause = Duration(milliseconds: 300);
+
   static const _pollingOptions = {
     NfcPollingOption.iso14443,
     NfcPollingOption.iso15693,
@@ -76,20 +101,53 @@ class NfcService {
     return availability == NfcAvailability.enabled;
   }
 
-  /// Writes [mnemonic] to the next tag presented, as a single NDEF text
-  /// record. Stops waiting after [timeout] if no tag is presented.
+  /// Encrypts [mnemonic] with [password] (see [NfcCredentialCrypto]) and
+  /// writes the resulting envelope to the next tag presented as a single
+  /// NDEF text record. Then closes that session, opens a NEW session,
+  /// waits for the tag again, reads it back, and decrypts it with the same
+  /// password — [NfcWriteResult.success] is only returned if that
+  /// round-trip reproduces [mnemonic] exactly. The plaintext mnemonic is
+  /// never written to the tag.
   ///
-  /// Never throws — every failure mode is reported through the returned
-  /// [NfcWriteResult].
+  /// Never throws — every failure mode (including a failed verification)
+  /// is reported through the returned [NfcWriteResult]. Returns
+  /// [NfcWriteResult.failed] immediately if a session is already active,
+  /// rather than starting a second, conflicting one.
   Future<NfcWriteResult> writeRecoveryCredential(
     String mnemonic, {
+    required String password,
     Duration timeout = _writeTimeout,
   }) async {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       return NfcWriteResult.writeNotSupportedOnPlatform;
     }
+    if (_sessionActive) return NfcWriteResult.failed;
     if (!await isAvailable()) return NfcWriteResult.unavailable;
 
+    final String envelopeJson;
+    try {
+      envelopeJson = await NfcCredentialCrypto.encrypt(mnemonic: mnemonic, password: password);
+    } catch (_) {
+      return NfcWriteResult.failed;
+    }
+
+    final writeResult = await _writeOnce(envelopeJson, timeout);
+    if (writeResult != NfcWriteResult.success) return writeResult;
+
+    await Future.delayed(_interSessionPause);
+
+    final readBack = await _readOnce(_verifyReadTimeout);
+    if (readBack == null) return NfcWriteResult.verificationFailed;
+
+    try {
+      final decrypted = await NfcCredentialCrypto.decrypt(envelopeJson: readBack, password: password);
+      return decrypted == mnemonic ? NfcWriteResult.success : NfcWriteResult.verificationFailed;
+    } catch (_) {
+      return NfcWriteResult.verificationFailed;
+    }
+  }
+
+  Future<NfcWriteResult> _writeOnce(String text, Duration timeout) async {
     final completer = Completer<NfcWriteResult>();
     final timer = Timer(timeout, () {
       if (!completer.isCompleted) completer.complete(NfcWriteResult.timedOut);
@@ -103,7 +161,7 @@ class NfcService {
           if (completer.isCompleted) return;
           try {
             final ndef = Ndef.from(tag);
-            final message = _encodeTextRecord(mnemonic);
+            final message = _encodeTextRecord(text);
             if (ndef == null || !ndef.isWritable || message.byteLength > ndef.maxSize) {
               completer.complete(NfcWriteResult.tagNotWritable);
               return;
@@ -125,17 +183,63 @@ class NfcService {
     }
   }
 
+  /// Waits for a tag and returns the raw NDEF text on it, or null on
+  /// timeout/error/no-readable-record. Used both by the write-then-verify
+  /// step above and by [startListeningForKey].
+  Future<String?> _readOnce(Duration timeout) async {
+    final completer = Completer<String?>();
+    final timer = Timer(timeout, () {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+
+    try {
+      _sessionActive = true;
+      await NfcManager.instance.startSession(
+        pollingOptions: _pollingOptions,
+        onDiscovered: (tag) async {
+          if (completer.isCompleted) return;
+          try {
+            final ndef = Ndef.from(tag);
+            final message = ndef == null ? null : await ndef.read();
+            final text = message == null ? null : _decodeTextRecord(message);
+            completer.complete(text);
+          } catch (_) {
+            if (!completer.isCompleted) completer.complete(null);
+          }
+        },
+      );
+      return await completer.future;
+    } catch (_) {
+      return null;
+    } finally {
+      timer.cancel();
+      _sessionActive = false;
+      await _stopSessionQuietly();
+    }
+  }
+
   /// Starts listening for a tag carrying a previously-written recovery
-  /// credential. When one is found and successfully decoded,
-  /// [onKeyDetected] is called with the mnemonic and listening stops.
+  /// credential envelope. When one is found and its shape is recognized
+  /// (see [NfcCredentialCrypto.isRecognizedEnvelope] — version,
+  /// walletType, network, well-formed fields) [onCredentialDetected] is
+  /// called with the raw envelope JSON and listening stops. This does NOT
+  /// decrypt anything — that needs a password only the caller's UI can ask
+  /// for (see `NfcTransferScreen`).
   ///
   /// [onError] is called (without stopping Android's session — the user
-  /// can just tap again) whenever a discovered tag isn't a readable Satra
-  /// key: not NDEF-formatted, empty, or an unrecognized record.
+  /// can just tap again) whenever a discovered tag isn't a readable,
+  /// recognized Satra key.
+  ///
+  /// Returns immediately via [onError] if a session is already active,
+  /// rather than starting a second, conflicting one.
   Future<void> startListeningForKey({
-    required void Function(String mnemonic) onKeyDetected,
+    required void Function(String envelopeJson) onCredentialDetected,
     void Function()? onError,
   }) async {
+    if (_sessionActive) {
+      onError?.call();
+      return;
+    }
     if (!await isAvailable()) {
       onError?.call();
       return;
@@ -149,13 +253,13 @@ class NfcService {
           try {
             final ndef = Ndef.from(tag);
             final message = ndef == null ? null : await ndef.read();
-            final mnemonic = message == null ? null : _decodeTextRecord(message);
-            if (mnemonic == null || mnemonic.isEmpty) {
+            final text = message == null ? null : _decodeTextRecord(message);
+            if (text == null || !NfcCredentialCrypto.isRecognizedEnvelope(text)) {
               onError?.call();
               return;
             }
             await stopListening();
-            onKeyDetected(mnemonic);
+            onCredentialDetected(text);
           } catch (_) {
             onError?.call();
           }

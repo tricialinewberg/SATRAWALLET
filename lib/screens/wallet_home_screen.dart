@@ -7,6 +7,7 @@ import '../debug/escape_debug_log.dart'; // TEMPORARY — see lib/debug/escape_d
 import '../route_observer.dart';
 import '../routes.dart';
 import '../services/breez_service.dart';
+import '../services/nfc_key_password_service.dart';
 import '../services/nfc_service.dart';
 import '../services/nostr_service.dart';
 import '../theme/colors.dart';
@@ -78,7 +79,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
   /// listening, not a screen the user is actively watching for feedback.
   void _startNfcListening() {
     NfcService.instance.startListeningForKey(
-      onKeyDetected: (mnemonic) {
+      onCredentialDetected: (envelopeJson) {
         if (!mounted) return;
         Navigator.of(context).pushNamed(SatraRoutes.nfcTransfer);
       },
@@ -175,6 +176,19 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
   /// later, or view/copy the words directly as a last resort, without
   /// repeating the sweep (which must not run twice — the funds have
   /// already moved).
+  ///
+  /// SECURITY: the mnemonic is never written to the tag in plaintext — see
+  /// [NfcService.writeRecoveryCredential], which encrypts it first. That
+  /// needs a password, and this whole flow is deliberately
+  /// non-interactive (fired via `unawaited`, no dialog can pop up here
+  /// without breaking the "nothing further needs to happen after the
+  /// swipe" design), so it uses whatever password was configured ahead of
+  /// time via [NfcKeyPasswordService] — never one entered on the spot. If
+  /// none has been configured, the write is skipped entirely (never as a
+  /// plaintext fallback) and logged clearly; the funds stay safe via the
+  /// pending-mnemonic backup above, and the user can set a password and
+  /// retry via [PendingEscapeRecoveryScreen], which prompts for one
+  /// interactively since it's a foreground screen action.
   Future<void> _sweepToNewWalletAndWriteTag() async {
     EscapeDebugLog.instance.log('Iniciando sweep para a nova carteira...');
     try {
@@ -185,8 +199,18 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
       await BreezService.instance.savePendingEscapeMnemonic(newMnemonic);
       EscapeDebugLog.instance.log('Mnemonic da nova carteira salva como pendente (backup de segurança).');
 
-      EscapeDebugLog.instance.log('Gravando a nova mnemonic na chave NFC...');
-      final result = await NfcService.instance.writeRecoveryCredential(newMnemonic);
+      final nfcPassword = await NfcKeyPasswordService.instance.getPassword();
+      if (nfcPassword == null || nfcPassword.isEmpty) {
+        EscapeDebugLog.instance.log(
+          'Nenhuma senha da chave física configurada — gravação NFC automática pulada '
+          '(nunca gravamos sem cifrar). Configure uma senha e use "Concluir gravação '
+          'pendente" no menu para gravar depois.',
+        );
+        return;
+      }
+
+      EscapeDebugLog.instance.log('Gravando a nova mnemonic (cifrada) na chave NFC...');
+      final result = await NfcService.instance.writeRecoveryCredential(newMnemonic, password: nfcPassword);
       EscapeDebugLog.instance.log('Gravação NFC concluída: ${result.name}');
 
       if (result == NfcWriteResult.success) {

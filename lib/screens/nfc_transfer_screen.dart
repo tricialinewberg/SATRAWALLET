@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../routes.dart';
 import '../services/breez_service.dart';
+import '../services/nfc_credential_crypto.dart';
 import '../services/nfc_service.dart';
 import '../theme/colors.dart';
+import '../widgets/nfc_password_prompt.dart';
 
 /// Recovery screen for a physical NFC key: listens for a tag, and on
-/// "Transferir" replaces the current wallet with the one stored on it.
+/// "Transferir" decrypts the credential envelope on it (prompting for its
+/// password) and replaces the current wallet with the one it holds.
 class NfcTransferScreen extends StatefulWidget {
   const NfcTransferScreen({super.key});
 
@@ -16,7 +19,7 @@ class NfcTransferScreen extends StatefulWidget {
 
 class _NfcTransferScreenState extends State<NfcTransferScreen> {
   bool _unavailable = false;
-  String? _detectedMnemonic;
+  String? _detectedEnvelope;
   bool _transferring = false;
 
   @override
@@ -39,9 +42,9 @@ class _NfcTransferScreenState extends State<NfcTransferScreen> {
     }
 
     await NfcService.instance.startListeningForKey(
-      onKeyDetected: (mnemonic) {
+      onCredentialDetected: (envelopeJson) {
         if (!mounted) return;
-        setState(() => _detectedMnemonic = mnemonic);
+        setState(() => _detectedEnvelope = envelopeJson);
       },
       onError: () {
         if (!mounted) return;
@@ -53,17 +56,31 @@ class _NfcTransferScreenState extends State<NfcTransferScreen> {
   }
 
   Future<void> _transfer() async {
-    final mnemonic = _detectedMnemonic;
-    if (mnemonic == null) return;
+    final envelope = _detectedEnvelope;
+    if (envelope == null) return;
+
+    final password = await promptForNfcKeyPassword(context);
+    if (!mounted || password == null || password.isEmpty) return;
 
     setState(() => _transferring = true);
     try {
+      // Decrypted only in memory, passed straight into restoreFromMnemonic
+      // below — never logged, stored, or shown anywhere.
+      final mnemonic = await NfcCredentialCrypto.decrypt(envelopeJson: envelope, password: password);
       await BreezService.instance.restoreFromMnemonic(mnemonic);
       if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil(
         SatraRoutes.walletHome,
         (route) => false,
       );
+    } on NfcCredentialException {
+      // Deliberately generic — see NfcCredentialCrypto.decrypt: a wrong
+      // password and a tampered/corrupted tag must be indistinguishable.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Senha incorreta, ou a chave está corrompida.')),
+      );
+      setState(() => _transferring = false);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -128,7 +145,7 @@ class _NfcTransferScreenState extends State<NfcTransferScreen> {
   }
 
   Widget _buildScanOrDetected() {
-    final detected = _detectedMnemonic != null;
+    final detected = _detectedEnvelope != null;
     return Column(
       children: [
         const Spacer(flex: 2),
