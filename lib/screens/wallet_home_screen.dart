@@ -427,64 +427,80 @@ class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderS
 
             final showCheck = _completing && t >= _checkThreshold;
 
+            // A filled bar that grows from the handle's resting position
+            // out to wherever it currently sits, so the colored area is
+            // always proportional to how far the handle has been dragged
+            // — rather than tinting the whole track's background at once,
+            // which front-loads the color change (white blends visibly
+            // dark within the first few percent of drag) and reads as an
+            // instant jump instead of a progressive fill.
+            final fillWidth = (fraction * maxDrag + _handleSize + 8).clamp(0.0, constraints.maxWidth);
+
             return Container(
               height: _trackHeight,
               decoration: BoxDecoration(
-                color: Color.lerp(Colors.white, SatraColors.navy, fraction),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(_trackHeight / 2),
                 border: Border.all(color: SatraColors.light),
               ),
-              child: Stack(
-                alignment: Alignment.centerLeft,
-                children: [
-                  Center(
-                    child: Text(
-                      'deslize para o modo de escape',
-                      style: TextStyle(
-                        color: Color.lerp(SatraColors.navy, Colors.white, fraction),
-                        fontWeight: FontWeight.w600,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(_trackHeight / 2),
+                child: Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(width: fillWidth, height: _trackHeight, color: SatraColors.navy),
+                    ),
+                    Center(
+                      child: Text(
+                        'deslize para o modo de escape',
+                        style: TextStyle(
+                          color: Color.lerp(SatraColors.navy, Colors.white, fraction),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: GestureDetector(
-                      onHorizontalDragUpdate: _completing
-                          ? null
-                          : (details) {
-                              setState(() {
-                                _dragFraction = ((_dragFraction * maxDrag) + details.delta.dx) / maxDrag;
-                                _dragFraction = _dragFraction.clamp(0.0, 1.0);
-                              });
-                            },
-                      onHorizontalDragEnd: _completing
-                          ? null
-                          : (details) {
-                              if (_dragFraction > 0.85) {
-                                _playSuccessThenConfirm();
-                              } else {
-                                setState(() => _dragFraction = 0);
-                              }
-                            },
-                      child: Transform.translate(
-                        offset: Offset(fraction * maxDrag, 0),
-                        child: Transform.scale(
-                          scale: handleScale,
-                          child: Container(
-                            width: _handleSize,
-                            height: _handleSize,
-                            decoration: const BoxDecoration(color: SatraColors.navy, shape: BoxShape.circle),
-                            child: Icon(
-                              showCheck ? Icons.check : Icons.arrow_forward,
-                              color: Colors.white,
-                              size: 20,
+                    Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: GestureDetector(
+                        onHorizontalDragUpdate: _completing
+                            ? null
+                            : (details) {
+                                setState(() {
+                                  _dragFraction = ((_dragFraction * maxDrag) + details.delta.dx) / maxDrag;
+                                  _dragFraction = _dragFraction.clamp(0.0, 1.0);
+                                });
+                              },
+                        onHorizontalDragEnd: _completing
+                            ? null
+                            : (details) {
+                                if (_dragFraction > 0.85) {
+                                  _playSuccessThenConfirm();
+                                } else {
+                                  setState(() => _dragFraction = 0);
+                                }
+                              },
+                        child: Transform.translate(
+                          offset: Offset(fraction * maxDrag, 0),
+                          child: Transform.scale(
+                            scale: handleScale,
+                            child: Container(
+                              width: _handleSize,
+                              height: _handleSize,
+                              decoration: const BoxDecoration(color: SatraColors.navy, shape: BoxShape.circle),
+                              child: Icon(
+                                showCheck ? Icons.check : Icons.arrow_forward,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },
