@@ -26,6 +26,14 @@ class BreezService {
   Future<void>? _initializing;
   double? _cachedBrlPerBtc;
 
+  /// Whether [BreezSdkSparkLib.init] has run. That call wires up the native
+  /// flutter_rust_bridge library for the whole process and — unlike
+  /// `connect`/[disconnect], which are meant to be cycled per wallet
+  /// session (e.g. by [restoreFromMnemonic]) — must only ever happen once;
+  /// calling it again throws `Bad state: Should not initialize
+  /// flutter_rust_bridge twice`.
+  bool _frbInitialized = false;
+
   /// Emits the wallet balance (in sats) right after connecting, and again
   /// whenever a payment lands or the wallet re-syncs while the app is open.
   Stream<int> get balanceStream => _balanceController.stream;
@@ -57,7 +65,10 @@ class BreezService {
   }
 
   Future<void> _doInitialize() async {
-    await BreezSdkSparkLib.init();
+    if (!_frbInitialized) {
+      await BreezSdkSparkLib.init();
+      _frbInitialized = true;
+    }
 
     final mnemonic = await _getOrCreateMnemonic();
     final apiKey = dotenv.env['BREEZ_API_KEY'] ?? '';
