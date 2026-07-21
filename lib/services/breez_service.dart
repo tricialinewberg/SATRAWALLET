@@ -165,14 +165,19 @@ class BreezService {
     return registered.lightningAddress;
   }
 
-  /// Creates a BOLT11 invoice for a fixed amount, returned as a raw string
-  /// ready to be QR-encoded (e.g. by [ReceiveScreen]).
-  Future<String> createInvoice(int amountSats, {String description = 'Satra Wallet'}) async {
+  /// Creates a BOLT11 invoice, returned as a raw string ready to be
+  /// QR-encoded (e.g. by [ReceiveScreen]). Pass null for [amountSats] to
+  /// create an amount-less ("any amount") invoice — the sender decides how
+  /// much to pay, e.g. via [sendPayment]'s own `amountSats` (see
+  /// [executeEscapeSweep], which needs this to drain a wallet's exact
+  /// balance with [FeePolicy.feesIncluded], since a fixed-amount invoice
+  /// would reject a payment for less than it demands).
+  Future<String> createInvoice(int? amountSats, {String description = 'Satra Wallet'}) async {
     final response = await _requireSdk.receivePayment(
       request: ReceivePaymentRequest(
         paymentMethod: ReceivePaymentMethod.bolt11Invoice(
           description: description,
-          amountSats: BigInt.from(amountSats),
+          amountSats: amountSats != null ? BigInt.from(amountSats) : null,
           expirySecs: 3600,
           paymentHash: null,
         ),
@@ -216,10 +221,19 @@ class BreezService {
   /// link is *not* a payment method `sendPayment` on the SDK accepts
   /// directly (it fails with `SdkError.invalidInput`) — it has to be
   /// resolved into an actual invoice first via `prepareLnurlPay`/`lnurlPay`.
+  ///
+  /// [feePolicy] only applies to the direct (non-LNURL) path below. Pass
+  /// [FeePolicy.feesIncluded] with [amountSats] set to the sender's full
+  /// balance to drain a wallet exactly — the network fee is deducted from
+  /// [amountSats] instead of being added on top, so the total debited
+  /// never exceeds what's available (see [executeEscapeSweep]). This only
+  /// makes sense against an amount-less invoice (see [createInvoice]) —
+  /// a fixed-amount invoice would reject receiving less than it demands.
   Future<Payment> sendPayment(
     String invoiceOrAddress, {
     int? amountSats,
     InputType? parsedInput,
+    FeePolicy? feePolicy,
   }) async {
     await initialize();
     final sdk = _requireSdk;
@@ -247,6 +261,7 @@ class BreezService {
       request: PrepareSendPaymentRequest(
         paymentRequest: PaymentRequest.input(input: trimmed),
         amount: amountSats != null ? BigInt.from(amountSats) : null,
+        feePolicy: feePolicy,
       ),
     );
     final response = await sdk.sendPayment(
@@ -319,17 +334,30 @@ class BreezService {
   /// a receiving destination, then reconnecting the original wallet to
   /// actually send the payment.
   ///
-  /// The destination is a native BOLT11 invoice (via [createInvoice]) for
-  /// the exact sweep amount, paid through the same direct
-  /// prepareSendPayment/sendPayment path already used for regular invoice
-  /// payments — deliberately NOT the wallet's Lightning Address via LNURL.
-  /// On-device testing found that paying a brand-new wallet's Lightning
-  /// Address fails with a timeout (`SdkError.lnurlError` calling
-  /// `breez.tips/lnurlp/.../invoice`), most likely because the address
-  /// isn't immediately queryable on Breez's LNURL server right after
-  /// registration. A BOLT11 invoice is generated locally by the new
-  /// wallet's own SDK connection and needs no external HTTP round-trip to
-  /// resolve, sidestepping that propagation delay entirely.
+  /// The destination is a native BOLT11 invoice (via [createInvoice]) paid
+  /// through the same direct prepareSendPayment/sendPayment path already
+  /// used for regular invoice payments — deliberately NOT the wallet's
+  /// Lightning Address via LNURL. On-device testing found that paying a
+  /// brand-new wallet's Lightning Address fails with a timeout
+  /// (`SdkError.lnurlError` calling `breez.tips/lnurlp/.../invoice`), most
+  /// likely because the address isn't immediately queryable on Breez's
+  /// LNURL server right after registration. A BOLT11 invoice is generated
+  /// locally by the new wallet's own SDK connection and needs no external
+  /// HTTP round-trip to resolve, sidestepping that propagation delay
+  /// entirely.
+  ///
+  /// The invoice is deliberately amount-less: a first attempt fixed it to
+  /// the current balance and paid it with that same amount, which failed
+  /// with `SdkError.sparkError: ... insufficient funds` — the network fee
+  /// has to come from somewhere, and there's no room for it once the
+  /// entire balance is already earmarked for the invoice. The SDK has no
+  /// separate "send max"/drain call, but [FeePolicy.feesIncluded] on
+  /// [sendPayment] does the same job: paired with `amountSats: balance`,
+  /// it tells the SDK the fee comes out of that balance rather than being
+  /// added on top, so the total ever debited is exactly the balance this
+  /// wallet already has. That only works against an amount-less invoice —
+  /// a fixed-amount one would reject receiving less than it demands, which
+  /// is exactly what `feesIncluded` causes it to receive.
   ///
   /// [onStep] is a TEMPORARY diagnostic hook (see
   /// lib/debug/escape_debug_log.dart) reporting each stage's outcome in
@@ -355,8 +383,11 @@ class BreezService {
 
     final String newWalletInvoice;
     try {
-      newWalletInvoice = await createInvoice(balance, description: 'Satra escape sweep');
-      onStep?.call('Fatura BOLT11 da nova carteira gerada com sucesso.');
+      // No amountSats: an "any amount" invoice, so paying it with
+      // FeePolicy.feesIncluded below can legitimately deliver less than
+      // the wallet's balance (balance minus the network fee).
+      newWalletInvoice = await createInvoice(null, description: 'Satra escape sweep');
+      onStep?.call('Fatura BOLT11 (sem valor fixo) da nova carteira gerada com sucesso.');
     } catch (e) {
       onStep?.call('FALHA ao gerar a fatura da nova carteira: $e');
       rethrow;
@@ -366,9 +397,13 @@ class BreezService {
     onStep?.call('Reconectando à carteira original...');
     await _connectWithMnemonic(originalMnemonic);
 
-    onStep?.call('Enviando $balance sats para a nova carteira...');
+    onStep?.call('Enviando $balance sats (taxa de rede incluída) para a nova carteira...');
     try {
-      await sendPayment(newWalletInvoice, amountSats: balance);
+      await sendPayment(
+        newWalletInvoice,
+        amountSats: balance,
+        feePolicy: FeePolicy.feesIncluded,
+      );
       onStep?.call('Envio concluído com sucesso.');
     } catch (e) {
       onStep?.call('FALHA ao enviar o pagamento: $e');
