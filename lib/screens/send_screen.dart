@@ -104,11 +104,7 @@ class _SendScreenState extends State<SendScreen> {
   /// Min/max sendable, in sats, for LNURL-style destinations — null if not
   /// applicable or not known.
   static (int, int)? _sendableRangeFor(InputType parsed) {
-    final payRequest = switch (parsed) {
-      InputType_LightningAddress(:final field0) => field0.payRequest,
-      InputType_LnurlPay(:final field0) => field0,
-      _ => null,
-    };
+    final payRequest = BreezService.lnurlPayRequestDetailsFor(parsed);
     if (payRequest == null) return null;
     return ((payRequest.minSendable ~/ BigInt.from(1000)).toInt(), (payRequest.maxSendable ~/ BigInt.from(1000)).toInt());
   }
@@ -179,7 +175,11 @@ class _SendScreenState extends State<SendScreen> {
 
     setState(() => _sending = true);
     try {
-      final payment = await BreezService.instance.sendPayment(destination, amountSats: amountSats);
+      final payment = await BreezService.instance.sendPayment(
+        destination,
+        amountSats: amountSats,
+        parsedInput: parsed,
+      );
       if (!mounted) return;
       await _showResultDialog(
         success: true,

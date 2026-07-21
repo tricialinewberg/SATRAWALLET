@@ -171,6 +171,16 @@ class BreezService {
     return _requireSdk.parse(input: input.trim());
   }
 
+  /// If [parsed] is a Lightning Address or a raw LNURL-pay link, returns
+  /// the LNURL pay-request details needed to resolve it into an invoice.
+  /// Null for every other destination kind (invoices, on-chain/Spark
+  /// addresses, ...), which [sendPayment] sends directly instead.
+  static LnurlPayRequestDetails? lnurlPayRequestDetailsFor(InputType parsed) => switch (parsed) {
+        InputType_LightningAddress(:final field0) => field0.payRequest,
+        InputType_LnurlPay(:final field0) => field0,
+        _ => null,
+      };
+
   /// Sends a payment to a pasted Lightning invoice or address.
   /// [amountSats] is required for amount-less destinations (e.g. a bare
   /// Lightning Address or an on-chain Bitcoin address) and optional
@@ -179,12 +189,44 @@ class BreezService {
   /// Calls [initialize] first — a screen can otherwise reach this before
   /// [WalletHomeScreen]'s own connect call has finished, which used to
   /// throw a [StateError] straight out of [_requireSdk].
-  Future<Payment> sendPayment(String invoiceOrAddress, {int? amountSats}) async {
+  ///
+  /// [parsedInput] can be passed if the caller already parsed the
+  /// destination (e.g. `SendScreen` does, to show what kind of
+  /// destination it is) to avoid parsing it a second time — otherwise
+  /// this parses it itself. Either way, a Lightning Address or bare LNURL
+  /// link is *not* a payment method `sendPayment` on the SDK accepts
+  /// directly (it fails with `SdkError.invalidInput`) — it has to be
+  /// resolved into an actual invoice first via `prepareLnurlPay`/`lnurlPay`.
+  Future<Payment> sendPayment(
+    String invoiceOrAddress, {
+    int? amountSats,
+    InputType? parsedInput,
+  }) async {
     await initialize();
     final sdk = _requireSdk;
+    final trimmed = invoiceOrAddress.trim();
+
+    final parsed = parsedInput ?? await sdk.parse(input: trimmed);
+    final payRequest = lnurlPayRequestDetailsFor(parsed);
+
+    if (payRequest != null) {
+      if (amountSats == null) {
+        throw ArgumentError('amountSats é obrigatório para um endereço/link Lightning.');
+      }
+      final prepareResponse = await sdk.prepareLnurlPay(
+        request: PrepareLnurlPayRequest(amount: BigInt.from(amountSats), payRequest: payRequest),
+      );
+      final response = await sdk.lnurlPay(
+        request: LnurlPayRequest(prepareResponse: prepareResponse),
+      );
+      await _refreshBalance();
+      await _refreshPayments();
+      return response.payment;
+    }
+
     final prepareResponse = await sdk.prepareSendPayment(
       request: PrepareSendPaymentRequest(
-        paymentRequest: PaymentRequest.input(input: invoiceOrAddress.trim()),
+        paymentRequest: PaymentRequest.input(input: trimmed),
         amount: amountSats != null ? BigInt.from(amountSats) : null,
       ),
     );
