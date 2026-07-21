@@ -313,11 +313,23 @@ class BreezService {
   /// new mnemonic is returned to the caller but never written to storage
   /// here.
   ///
-  /// This SDK only supports one live connection at a time, so learning the
-  /// new wallet's receiving address requires briefly disconnecting from
-  /// the current wallet, connecting as the new one just long enough to
-  /// register/read its Lightning Address, then reconnecting the original
-  /// wallet to actually send the payment.
+  /// This SDK only supports one live connection at a time, so getting a
+  /// destination on the new wallet requires briefly disconnecting from the
+  /// current wallet, connecting as the new one just long enough to create
+  /// a receiving destination, then reconnecting the original wallet to
+  /// actually send the payment.
+  ///
+  /// The destination is a native BOLT11 invoice (via [createInvoice]) for
+  /// the exact sweep amount, paid through the same direct
+  /// prepareSendPayment/sendPayment path already used for regular invoice
+  /// payments — deliberately NOT the wallet's Lightning Address via LNURL.
+  /// On-device testing found that paying a brand-new wallet's Lightning
+  /// Address fails with a timeout (`SdkError.lnurlError` calling
+  /// `breez.tips/lnurlp/.../invoice`), most likely because the address
+  /// isn't immediately queryable on Breez's LNURL server right after
+  /// registration. A BOLT11 invoice is generated locally by the new
+  /// wallet's own SDK connection and needs no external HTTP round-trip to
+  /// resolve, sidestepping that propagation delay entirely.
   ///
   /// [onStep] is a TEMPORARY diagnostic hook (see
   /// lib/debug/escape_debug_log.dart) reporting each stage's outcome in
@@ -337,16 +349,16 @@ class BreezService {
 
     final originalMnemonic = await _getOrCreateMnemonic();
 
-    onStep?.call('Conectando à nova carteira para obter o endereço Lightning...');
+    onStep?.call('Conectando à nova carteira para gerar uma fatura...');
     await disconnect();
     await _connectWithMnemonic(newMnemonic);
 
-    final String newWalletAddress;
+    final String newWalletInvoice;
     try {
-      newWalletAddress = await getLightningAddress();
-      onStep?.call('Endereço Lightning da nova carteira: $newWalletAddress');
+      newWalletInvoice = await createInvoice(balance, description: 'Satra escape sweep');
+      onStep?.call('Fatura BOLT11 da nova carteira gerada com sucesso.');
     } catch (e) {
-      onStep?.call('FALHA ao obter o endereço da nova carteira: $e');
+      onStep?.call('FALHA ao gerar a fatura da nova carteira: $e');
       rethrow;
     }
     await disconnect();
@@ -356,7 +368,7 @@ class BreezService {
 
     onStep?.call('Enviando $balance sats para a nova carteira...');
     try {
-      await sendPayment(newWalletAddress, amountSats: balance);
+      await sendPayment(newWalletInvoice, amountSats: balance);
       onStep?.call('Envio concluído com sucesso.');
     } catch (e) {
       onStep?.call('FALHA ao enviar o pagamento: $e');
