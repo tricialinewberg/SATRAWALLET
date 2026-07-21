@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -19,6 +21,13 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
   late final Future<String?> _mnemonicFuture;
   final _restoreController = TextEditingController();
   bool _restoring = false;
+
+  /// Whether the recovery phrase is currently shown in the clear. Starts
+  /// hidden — this is the app's most sensitive screen, so the words stay
+  /// blurred behind a "Revelar" prompt until the user deliberately asks
+  /// to see them (mirrors the eye-icon show/hide toggle already used for
+  /// the balance on [WalletHomeScreen]).
+  bool _mnemonicRevealed = false;
 
   @override
   void initState() {
@@ -160,23 +169,63 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: SatraColors.light),
-                      ),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 10,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Stack(
                         children: [
-                          for (var i = 0; i < words.length; i++)
-                            SizedBox(
-                              width: 130,
-                              child: Text(
-                                '${i + 1}. ${words[i]}',
-                                style: const TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w600),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: SatraColors.light),
+                            ),
+                            child: Wrap(
+                              spacing: 12,
+                              runSpacing: 10,
+                              children: [
+                                for (var i = 0; i < words.length; i++)
+                                  SizedBox(
+                                    width: 130,
+                                    child: Text(
+                                      '${i + 1}. ${words[i]}',
+                                      style: const TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (!_mnemonicRevealed)
+                            Positioned.fill(
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                child: Container(
+                                  color: Colors.white.withValues(alpha: 0.55),
+                                  alignment: Alignment.center,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => setState(() => _mnemonicRevealed = true),
+                                    icon: const Icon(Icons.visibility, color: SatraColors.navy),
+                                    label: const Text(
+                                      'Revelar',
+                                      style: TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w600),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      side: const BorderSide(color: SatraColors.navy),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: IconButton(
+                                icon: const Icon(Icons.visibility_off, color: SatraColors.medium),
+                                tooltip: 'Ocultar frase',
+                                onPressed: () => setState(() => _mnemonicRevealed = false),
                               ),
                             ),
                         ],
