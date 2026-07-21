@@ -1,4 +1,4 @@
-package com.example.xiaomi_calculator_flutter
+package com.example.calculadora
 
 import io.flutter.embedding.android.FlutterActivity
 

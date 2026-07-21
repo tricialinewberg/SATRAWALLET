@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:xiaomi_calculator_flutter/main.dart';
+import 'package:calculadora/main.dart';
 
 void main() {
   testWidgets('starts with zero and updates the display when digits are pressed', (tester) async {
