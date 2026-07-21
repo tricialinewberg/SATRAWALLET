@@ -148,7 +148,7 @@ void _showRestoreChooser(BuildContext context) {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                Navigator.of(context).pushNamed(SatraRoutes.walletBackup);
+                Navigator.of(sheetContext).pushNamed(SatraRoutes.walletBackup);
               },
             ),
             ListTile(
@@ -159,7 +159,7 @@ void _showRestoreChooser(BuildContext context) {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                Navigator.of(context).pushNamed(SatraRoutes.nfcTransfer);
+                Navigator.of(sheetContext).pushNamed(SatraRoutes.nfcTransfer);
               },
             ),
           ],
