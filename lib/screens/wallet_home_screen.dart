@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart';
 import 'package:flutter/material.dart';
 
+import '../debug/escape_debug_log.dart'; // TEMPORARY — see lib/debug/escape_debug_log.dart
 import '../route_observer.dart';
 import '../routes.dart';
 import '../services/breez_service.dart';
@@ -136,11 +137,17 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
   }
 
   void _onEscapeConfirmed() {
+    // TEMPORARY diagnostics (see lib/debug/escape_debug_log.dart): confirm
+    // the handler itself fires at all before trusting any of the
+    // step-by-step logging further down the chain.
+    EscapeDebugLog.instance.clear();
+    EscapeDebugLog.instance.log('Swipe confirmado — _onEscapeConfirmed disparado.');
+
     // None of these are awaited — the user must see the confirmation screen
     // immediately, regardless of how long the Breez sweep, a slow Nostr
     // relay, or waiting for an NFC tag takes.
     unawaited(_sweepToNewWalletAndWriteTag());
-    unawaited(NostrService.instance.sendEscapeAlert());
+    unawaited(_sendEscapeAlert());
     Navigator.of(context).pushNamedAndRemoveUntil(
       SatraRoutes.escapeConfirmation,
       (route) => false,
@@ -156,13 +163,19 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
   /// the user may not have the key on hand at this exact moment, so the
   /// whole thing is best-effort — not a hard dependency of the escape flow,
   /// and its result (including the iOS "writing isn't supported" case) is
-  /// never surfaced to the UI.
+  /// never surfaced to the UI (other than through the TEMPORARY debug log).
   Future<void> _sweepToNewWalletAndWriteTag() async {
+    EscapeDebugLog.instance.log('Iniciando sweep para a nova carteira...');
     try {
-      final newMnemonic = await BreezService.instance.executeEscapeSweep();
-      await NfcService.instance.writeRecoveryCredential(newMnemonic);
-    } catch (_) {
+      final newMnemonic = await BreezService.instance.executeEscapeSweep(
+        onStep: EscapeDebugLog.instance.log,
+      );
+      EscapeDebugLog.instance.log('Gravando a nova mnemonic na chave NFC...');
+      final result = await NfcService.instance.writeRecoveryCredential(newMnemonic);
+      EscapeDebugLog.instance.log('Gravação NFC concluída: ${result.name}');
+    } catch (e) {
       // Best-effort — the confirmation screen is shown regardless of outcome.
+      EscapeDebugLog.instance.log('FALHA no sweep/gravação NFC: $e');
     } finally {
       // Defensive: the ambient listener was stopped as soon as the swipe
       // threshold was reached (see _EscapeSlider.onThresholdReached) so the
@@ -172,6 +185,19 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
       // _onEscapeConfirmed), so there's nothing left to resume — this only
       // matters if that ever changes.
       if (mounted) _startNfcListening();
+    }
+  }
+
+  /// TEMPORARY wrapper (see lib/debug/escape_debug_log.dart) just to bound
+  /// and log any unexpected exception from the Nostr call itself — the
+  /// granular per-contact/per-relay logging happens inside
+  /// [NostrService.sendEscapeAlert] via its own `onStep` callback.
+  Future<void> _sendEscapeAlert() async {
+    EscapeDebugLog.instance.log('Iniciando envio do alerta Nostr...');
+    try {
+      await NostrService.instance.sendEscapeAlert(onStep: EscapeDebugLog.instance.log);
+    } catch (e) {
+      EscapeDebugLog.instance.log('FALHA inesperada no alerta Nostr: $e');
     }
   }
 

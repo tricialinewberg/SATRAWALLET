@@ -318,21 +318,50 @@ class BreezService {
   /// the current wallet, connecting as the new one just long enough to
   /// register/read its Lightning Address, then reconnecting the original
   /// wallet to actually send the payment.
-  Future<String> executeEscapeSweep() async {
+  ///
+  /// [onStep] is a TEMPORARY diagnostic hook (see
+  /// lib/debug/escape_debug_log.dart) reporting each stage's outcome in
+  /// plain terms — remove the parameter and its call sites once escape
+  /// delivery is confirmed reliable on-device.
+  Future<String> executeEscapeSweep({void Function(String message)? onStep}) async {
+    onStep?.call('Gerando nova carteira...');
     final newMnemonic = bip39.generateMnemonic(strength: 128); // 128 bits -> 12 words
+    onStep?.call('Nova carteira gerada.');
 
     final balance = await getBalance();
-    if (balance <= 0) return newMnemonic;
+    onStep?.call('Saldo atual: $balance sats.');
+    if (balance <= 0) {
+      onStep?.call('Saldo zero — nada a enviar, apenas a nova chave será gravada.');
+      return newMnemonic;
+    }
 
     final originalMnemonic = await _getOrCreateMnemonic();
 
+    onStep?.call('Conectando à nova carteira para obter o endereço Lightning...');
     await disconnect();
     await _connectWithMnemonic(newMnemonic);
-    final newWalletAddress = await getLightningAddress();
+
+    final String newWalletAddress;
+    try {
+      newWalletAddress = await getLightningAddress();
+      onStep?.call('Endereço Lightning da nova carteira: $newWalletAddress');
+    } catch (e) {
+      onStep?.call('FALHA ao obter o endereço da nova carteira: $e');
+      rethrow;
+    }
     await disconnect();
 
+    onStep?.call('Reconectando à carteira original...');
     await _connectWithMnemonic(originalMnemonic);
-    await sendPayment(newWalletAddress, amountSats: balance);
+
+    onStep?.call('Enviando $balance sats para a nova carteira...');
+    try {
+      await sendPayment(newWalletAddress, amountSats: balance);
+      onStep?.call('Envio concluído com sucesso.');
+    } catch (e) {
+      onStep?.call('FALHA ao enviar o pagamento: $e');
+      rethrow;
+    }
 
     return newMnemonic;
   }
