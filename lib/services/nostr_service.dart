@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nostr/nostr.dart';
 
@@ -46,6 +47,12 @@ class NostrService {
   ];
 
   static const _relayConnectTimeout = Duration(seconds: 8);
+
+  /// How long to wait for a relay's `OK`/`NOTICE` response after
+  /// publishing before giving up and closing the socket anyway. Purely for
+  /// diagnostics right now (see [_publishToRelay]) — we don't retry or
+  /// change behavior based on the response, just log it.
+  static const _relayAckTimeout = Duration(seconds: 5);
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   Keys? _keys;
@@ -130,19 +137,37 @@ class NostrService {
   /// not stop alerts to the rest. This is intentional — the caller (the
   /// escape handler) fires this without awaiting it, so there is nothing
   /// meaningful to show the user if part of it fails.
+  ///
+  /// This is called via `unawaited(...)` from the escape handler, but that
+  /// only means the *caller* doesn't wait for it — the returned Future
+  /// still runs to completion independently of any Widget's lifecycle.
+  /// Nothing here holds a `BuildContext` or is tied to a State object, so
+  /// disposing the screen that triggered the escape (which happens almost
+  /// immediately, since it's removed from the navigation stack) does not
+  /// cancel this work. The only way it wouldn't finish is the OS killing
+  /// the process outright, which is outside Flutter's control either way.
+  ///
+  /// TEMPORARY: logs every step via [debugPrint] for on-device debugging.
+  /// Remove these once alert delivery is confirmed reliable.
   Future<void> sendEscapeAlert({
     String message = 'Alerta ativado. Preciso de ajuda.',
   }) async {
     final contacts = await getContacts();
-    if (contacts.isEmpty) return;
+    debugPrint('[NostrService] sendEscapeAlert: ${contacts.length} trusted contact(s) registered');
+    if (contacts.isEmpty) {
+      debugPrint('[NostrService] sendEscapeAlert: no trusted contacts, nothing to send');
+      return;
+    }
 
     final keys = await _getOrCreateKeys();
+    debugPrint('[NostrService] sendEscapeAlert: sending from npub=${keys.npub}');
 
     await Future.wait(
       contacts.map(
         (contact) => _alertContact(keys: keys, contact: contact, message: message),
       ),
     );
+    debugPrint('[NostrService] sendEscapeAlert: finished processing all contacts');
   }
 
   Future<void> _alertContact({
@@ -150,32 +175,89 @@ class NostrService {
     required TrustedContact contact,
     required String message,
   }) async {
+    final label = contact.label;
     try {
-      final recipientPubkey = Bech32Entity.decode(payload: contact.npub).data;
+      debugPrint('[NostrService] "$label": decoding npub ${contact.npub}');
+      final decoded = Bech32Entity.decode(payload: contact.npub);
+      if (decoded.prefix != Nip19Prefix.npub) {
+        debugPrint('[NostrService] "$label": FAILED — decoded prefix is ${decoded.prefix}, not npub');
+        return;
+      }
+      final recipientPubkey = decoded.data;
+      debugPrint('[NostrService] "$label": decoded pubkey=$recipientPubkey');
+
       final giftWrap = await Nip17.create(
         message: message,
         authorSecretKey: keys.secret,
         recipientPubkey: recipientPubkey,
       );
-      await _publishToAllRelays(giftWrap);
-    } catch (_) {
+      debugPrint('[NostrService] "$label": gift wrap created id=${giftWrap.id} kind=${giftWrap.kind}');
+
+      await _publishToAllRelays(label, giftWrap);
+      debugPrint('[NostrService] "$label": done publishing to all relays');
+    } catch (e, st) {
       // Best-effort: one bad contact must not stop alerts to the rest.
+      debugPrint('[NostrService] "$label": FAILED — $e');
+      debugPrint('[NostrService] "$label": $st');
     }
   }
 
-  Future<void> _publishToAllRelays(Event event) async {
+  Future<void> _publishToAllRelays(String contactLabel, Event event) async {
     final frame = event.serialize();
-    await Future.wait(_relays.map((relay) => _publishToRelay(relay, frame)));
+    debugPrint(
+      '[NostrService] "$contactLabel": publishing event id=${event.id} to ${_relays.length} relay(s)',
+    );
+    await Future.wait(_relays.map((relay) => _publishToRelay(contactLabel, relay, frame)));
   }
 
-  Future<void> _publishToRelay(String relayUrl, String frame) async {
+  /// Connects to [relayUrl], publishes [frame], and — unlike before — waits
+  /// briefly for the relay's `["OK", id, accepted, message]` (or `NOTICE`)
+  /// response before closing, logging whatever comes back (or the absence
+  /// of a response). Previously this closed the socket immediately after
+  /// `add()`, which gave zero visibility into whether a relay actually
+  /// accepted the event (e.g. rejected for a bad signature, an
+  /// unsupported/rate-limited kind, or some other policy reason) — this is
+  /// the most likely explanation for alerts silently not arriving.
+  Future<void> _publishToRelay(String contactLabel, String relayUrl, String frame) async {
+    WebSocket? socket;
     try {
-      final socket = await WebSocket.connect(relayUrl).timeout(_relayConnectTimeout);
+      debugPrint('[NostrService] "$contactLabel" -> $relayUrl: connecting');
+      socket = await WebSocket.connect(relayUrl).timeout(_relayConnectTimeout);
+      debugPrint('[NostrService] "$contactLabel" -> $relayUrl: connected, sending event');
+
+      final response = Completer<String?>();
+      final subscription = socket.listen(
+        (data) {
+          if (!response.isCompleted) response.complete(data.toString());
+        },
+        onError: (Object e) {
+          if (!response.isCompleted) response.complete(null);
+        },
+        onDone: () {
+          if (!response.isCompleted) response.complete(null);
+        },
+      );
+
       socket.add(frame);
-      await socket.close();
-    } catch (_) {
+
+      final raw = await response.future.timeout(_relayAckTimeout, onTimeout: () => null);
+      await subscription.cancel();
+
+      if (raw == null) {
+        debugPrint('[NostrService] "$contactLabel" -> $relayUrl: no OK/NOTICE response within timeout');
+      } else {
+        debugPrint('[NostrService] "$contactLabel" -> $relayUrl: response=$raw');
+      }
+    } catch (e) {
       // Best-effort broadcast — a slow/unreachable relay must not block or
       // fail the others; redundancy across relays is the whole point.
+      debugPrint('[NostrService] "$contactLabel" -> $relayUrl: FAILED — $e');
+    } finally {
+      try {
+        await socket?.close();
+      } catch (_) {
+        // Already closed/broken — nothing left to clean up.
+      }
     }
   }
 }

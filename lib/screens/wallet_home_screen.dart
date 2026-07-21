@@ -163,6 +163,15 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
       await NfcService.instance.writeRecoveryCredential(newMnemonic);
     } catch (_) {
       // Best-effort — the confirmation screen is shown regardless of outcome.
+    } finally {
+      // Defensive: the ambient listener was stopped as soon as the swipe
+      // threshold was reached (see _EscapeSlider.onThresholdReached) so the
+      // escape's own write always wins the tag over the "detect key to
+      // restore" listener. Normally this screen has already been removed
+      // from the navigation stack by the time we get here (see
+      // _onEscapeConfirmed), so there's nothing left to resume — this only
+      // matters if that ever changes.
+      if (mounted) _startNfcListening();
     }
   }
 
@@ -338,7 +347,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _EscapeSlider(onConfirmed: _onEscapeConfirmed),
+                _EscapeSlider(
+                  onThresholdReached: () => NfcService.instance.stopListening(),
+                  onConfirmed: _onEscapeConfirmed,
+                ),
                 const SizedBox(height: 8),
                 IconButton(
                   icon: const Icon(Icons.info_outline, color: SatraColors.medium),
@@ -361,7 +373,14 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
 class _EscapeSlider extends StatefulWidget {
   final VoidCallback onConfirmed;
 
-  const _EscapeSlider({required this.onConfirmed});
+  /// Called the instant the drag threshold is reached — before the
+  /// settle/pulse animation plays and well before [onConfirmed]. Used to
+  /// stop the ambient NFC listener as early as possible, so a tag already
+  /// near the phone can't be scooped up by the "detect key to restore"
+  /// listener instead of the escape flow's own write attempt.
+  final VoidCallback? onThresholdReached;
+
+  const _EscapeSlider({required this.onConfirmed, this.onThresholdReached});
 
   @override
   State<_EscapeSlider> createState() => _EscapeSliderState();
@@ -397,6 +416,7 @@ class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderS
   }
 
   void _playSuccessThenConfirm() {
+    widget.onThresholdReached?.call();
     _dragFractionAtRelease = _dragFraction;
     setState(() => _completing = true);
     _successController.forward(from: 0).whenComplete(() {
