@@ -7,7 +7,6 @@ import '../debug/escape_debug_log.dart'; // TEMPORARY — see lib/debug/escape_d
 import '../route_observer.dart';
 import '../routes.dart';
 import '../services/breez_service.dart';
-import '../services/nfc_key_password_service.dart';
 import '../services/nfc_service.dart';
 import '../services/nostr_service.dart';
 import '../theme/colors.dart';
@@ -115,7 +114,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
             const Text(
               'Ao deslizar, todo o saldo da sua carteira é enviado automaticamente '
               'para sua chave física. Ao mesmo tempo, um alerta discreto é enviado '
-              'para as pessoas de confiança que você cadastrou.',
+              'para as pessoas de confiança que você cadastrou.\n\n'
+              'Isso só funciona se a chave física já tiver sido configurada com uma '
+              'senha antes (menu > Senha da chave física) — sem isso, o saldo não '
+              'tem para onde ir.',
               textAlign: TextAlign.center,
               style: TextStyle(color: SatraColors.navy, fontSize: 14, height: 1.4),
             ),
@@ -145,9 +147,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
     EscapeDebugLog.instance.log('Swipe confirmado — _onEscapeConfirmed disparado.');
 
     // None of these are awaited — the user must see the confirmation screen
-    // immediately, regardless of how long the Breez sweep, a slow Nostr
-    // relay, or waiting for an NFC tag takes.
-    unawaited(_sweepToNewWalletAndWriteTag());
+    // immediately, regardless of how long the Breez sweep or a slow Nostr
+    // relay takes.
+    unawaited(_sweepToFixedEscapeWallet());
     unawaited(_sendEscapeAlert());
     Navigator.of(context).pushNamedAndRemoveUntil(
       SatraRoutes.escapeConfirmation,
@@ -155,84 +157,39 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
     );
   }
 
-  /// Generates a brand-new wallet, sweeps this wallet's entire balance into
-  /// it, then opportunistically writes the NEW wallet's mnemonic to a
-  /// physical NFC key if one happens to be presented within the write
-  /// timeout — never this wallet's own mnemonic, since that one stays
-  /// behind (now empty) as the wallet the normal PIN opens. The write step
-  /// must run after the sweep since it needs the sweep's new mnemonic, and
-  /// the user may not have the key on hand at this exact moment, so the
-  /// whole thing is best-effort — not a hard dependency of the escape flow,
-  /// and its result (including the iOS "writing isn't supported" case) is
-  /// never surfaced to the UI (other than through the TEMPORARY debug log).
+  /// Sweeps this wallet's entire balance to the FIXED escape wallet
+  /// configured ahead of time during physical-key setup (see
+  /// [NfcKeyPasswordSetupScreen] and [BreezService.getEscapeWalletMnemonic]).
   ///
-  /// FUND SAFETY: the new mnemonic is saved as a pending-escape backup
-  /// (see [BreezService.savePendingEscapeMnemonic]) *before* the write is
-  /// attempted, and cleared *only* if the write is confirmed successful.
-  /// Real-device testing found the write can time out — without this,
-  /// funds already swept to the new wallet before that point would become
-  /// permanently unreachable (not on the tag, and never stored anywhere
-  /// else). [PendingEscapeRecoveryScreen] lets the user retry the write
-  /// later, or view/copy the words directly as a last resort, without
-  /// repeating the sweep (which must not run twice — the funds have
-  /// already moved).
-  ///
-  /// SECURITY: the mnemonic is never written to the tag in plaintext — see
-  /// [NfcService.writeRecoveryCredential], which encrypts it first. That
-  /// needs a password, and this whole flow is deliberately
-  /// non-interactive (fired via `unawaited`, no dialog can pop up here
-  /// without breaking the "nothing further needs to happen after the
-  /// swipe" design), so it uses whatever password was configured ahead of
-  /// time via [NfcKeyPasswordService] — never one entered on the spot. If
-  /// none has been configured, the write is skipped entirely (never as a
-  /// plaintext fallback) and logged clearly; the funds stay safe via the
-  /// pending-mnemonic backup above, and the user can set a password and
-  /// retry via [PendingEscapeRecoveryScreen], which prompts for one
-  /// interactively since it's a foreground screen action.
-  Future<void> _sweepToNewWalletAndWriteTag() async {
-    EscapeDebugLog.instance.log('Iniciando sweep para a nova carteira...');
+  /// Deliberately does NOT touch NFC at all: the escape wallet's mnemonic
+  /// was already written to the physical key once, at setup time, and
+  /// never needs to change again — moving wallet creation and NFC writing
+  /// out of this time-critical, hardware-dependent path (and out of a
+  /// disposable per-escape wallet whose tag write had to succeed in the
+  /// moment or funds were stranded) is the whole point of the fixed-wallet
+  /// design. If no escape wallet has been configured yet, the sweep is
+  /// skipped entirely (logged clearly) — the Nostr alert in
+  /// [_sendEscapeAlert] still fires regardless, since it's a separate,
+  /// unawaited step.
+  Future<void> _sweepToFixedEscapeWallet() async {
+    EscapeDebugLog.instance.log('Iniciando sweep para a carteira de escape...');
     try {
-      final newMnemonic = await BreezService.instance.executeEscapeSweep(
-        onStep: EscapeDebugLog.instance.log,
-      );
-
-      await BreezService.instance.savePendingEscapeMnemonic(newMnemonic);
-      EscapeDebugLog.instance.log('Mnemonic da nova carteira salva como pendente (backup de segurança).');
-
-      final nfcPassword = await NfcKeyPasswordService.instance.getPassword();
-      if (nfcPassword == null || nfcPassword.isEmpty) {
+      final escapeMnemonic = await BreezService.instance.getEscapeWalletMnemonic();
+      if (escapeMnemonic == null || escapeMnemonic.isEmpty) {
         EscapeDebugLog.instance.log(
-          'Nenhuma senha da chave física configurada — gravação NFC automática pulada '
-          '(nunca gravamos sem cifrar). Configure uma senha e use "Concluir gravação '
-          'pendente" no menu para gravar depois.',
+          'Nenhuma carteira de escape configurada — sweep pulado. '
+          'Configure uma em menu > Senha da chave física.',
         );
         return;
       }
 
-      EscapeDebugLog.instance.log('Gravando a nova mnemonic (cifrada) na chave NFC...');
-      final result = await NfcService.instance.writeRecoveryCredential(newMnemonic, password: nfcPassword);
-      EscapeDebugLog.instance.log('Gravação NFC concluída: ${result.name}');
-
-      if (result == NfcWriteResult.success) {
-        await BreezService.instance.clearPendingEscapeMnemonic();
-        EscapeDebugLog.instance.log('Gravação confirmada — backup pendente removido.');
-      } else {
-        EscapeDebugLog.instance.log(
-          'Gravação NÃO confirmada — mnemonic mantida como pendente para nova tentativa (menu > Concluir gravação pendente).',
-        );
-      }
+      await BreezService.instance.executeEscapeSweep(
+        escapeWalletMnemonic: escapeMnemonic,
+        onStep: EscapeDebugLog.instance.log,
+      );
     } catch (e) {
       // Best-effort — the confirmation screen is shown regardless of outcome.
-      EscapeDebugLog.instance.log('FALHA no sweep/gravação NFC: $e');
-    } finally {
-      // Defensive: the ambient listener was stopped as soon as the swipe
-      // threshold was reached (see _EscapeSlider.onThresholdReached) so the
-      // escape's own write always wins the tag over the "detect key to
-      // restore" listener. Normally this screen has already been removed
-      // from the navigation stack by the time we get here (see
-      // _onEscapeConfirmed), so there's nothing left to resume — this only
-      // matters if that ever changes.
-      if (mounted) _startNfcListening();
+      EscapeDebugLog.instance.log('FALHA no sweep para a carteira de escape: $e');
     }
   }
 
@@ -421,10 +378,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _EscapeSlider(
-                  onThresholdReached: () => NfcService.instance.stopListening(),
-                  onConfirmed: _onEscapeConfirmed,
-                ),
+                _EscapeSlider(onConfirmed: _onEscapeConfirmed),
                 const SizedBox(height: 8),
                 IconButton(
                   icon: const Icon(Icons.info_outline, color: SatraColors.medium),
@@ -447,14 +401,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
 class _EscapeSlider extends StatefulWidget {
   final VoidCallback onConfirmed;
 
-  /// Called the instant the drag threshold is reached — before the
-  /// settle/pulse animation plays and well before [onConfirmed]. Used to
-  /// stop the ambient NFC listener as early as possible, so a tag already
-  /// near the phone can't be scooped up by the "detect key to restore"
-  /// listener instead of the escape flow's own write attempt.
-  final VoidCallback? onThresholdReached;
-
-  const _EscapeSlider({required this.onConfirmed, this.onThresholdReached});
+  const _EscapeSlider({required this.onConfirmed});
 
   @override
   State<_EscapeSlider> createState() => _EscapeSliderState();
@@ -490,7 +437,6 @@ class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderS
   }
 
   void _playSuccessThenConfirm() {
-    widget.onThresholdReached?.call();
     _dragFractionAtRelease = _dragFraction;
     setState(() => _completing = true);
     _successController.forward(from: 0).whenComplete(() {

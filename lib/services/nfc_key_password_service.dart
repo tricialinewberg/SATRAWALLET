@@ -3,11 +3,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'nfc_credential_crypto.dart';
 
 /// Manages the password used to encrypt whatever gets written to the
-/// physical NFC recovery key (see [NfcCredentialCrypto]), pre-configured
-/// ahead of time in [NfcKeyPasswordSetupScreen] so the escape flow's
-/// automatic write doesn't need to interactively prompt for one — the
-/// whole point of the escape gesture is that nothing further needs to
-/// happen after it (see `WalletHomeScreen._sweepToNewWalletAndWriteTag`).
+/// physical NFC recovery key (see [NfcCredentialCrypto]), entered once in
+/// [NfcKeyPasswordSetupScreen] at the same moment the fixed escape wallet
+/// is created and its mnemonic written to the tag (see
+/// `BreezService.createEscapeWallet`). The escape flow itself never reads
+/// this — it doesn't touch NFC at all, since the tag is only ever written
+/// once, here, well ahead of any real escape.
 ///
 /// Stored in secure storage under its own key, distinct from the wallet's
 /// own mnemonic. This protects the tag from someone who finds/steals it

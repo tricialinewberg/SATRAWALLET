@@ -8,18 +8,19 @@ import '../services/nfc_service.dart';
 import '../theme/colors.dart';
 import '../widgets/nfc_password_prompt.dart';
 
-/// Fund-safety net for a failed/interrupted escape NFC write.
+/// Fund-safety net for a failed/interrupted NFC write during physical-key
+/// setup (see [NfcKeyPasswordSetupScreen]).
 ///
-/// [BreezService.executeEscapeSweep] moves funds to a brand-new wallet
-/// before the NFC write is attempted, and that new wallet's mnemonic is
-/// saved as "pending" (see [BreezService.savePendingEscapeMnemonic]) right
-/// before the write — so if the write times out or fails, those funds
-/// aren't stranded with no way back. This screen reads that pending
-/// mnemonic (if any), lets the user retry the write without repeating the
-/// sweep itself (the funds have already moved — sweeping again would just
-/// generate yet another wallet), and as a last resort lets them reveal and
-/// copy the 12 words directly, the same blur/reveal pattern
-/// [WalletBackupScreen] uses for the primary wallet's own phrase.
+/// The escape wallet [NfcKeyPasswordSetupScreen] creates is saved
+/// permanently under its own storage key the moment it's generated — so
+/// it's never at risk of being lost — but it's also saved as "pending"
+/// (see [BreezService.savePendingEscapeMnemonic]) right before the NFC
+/// write is attempted, since a failed/unconfirmed write means the
+/// physical tag doesn't yet actually hold it. This screen reads that
+/// pending mnemonic (if any), lets the user retry writing it to the tag
+/// without generating yet another escape wallet, and as a last resort lets
+/// them reveal and copy the 12 words directly, the same blur/reveal
+/// pattern [WalletBackupScreen] uses for the primary wallet's own phrase.
 class PendingEscapeRecoveryScreen extends StatefulWidget {
   const PendingEscapeRecoveryScreen({super.key});
 
@@ -116,7 +117,7 @@ class _PendingEscapeRecoveryScreenState extends State<PendingEscapeRecoveryScree
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 32),
           child: Text(
-            'Nenhuma gravação pendente. Se você já passou por um escape e a chave física foi gravada com sucesso, não há nada para fazer aqui.',
+            'Nenhuma gravação pendente. Se a chave física já foi configurada com sucesso, não há nada para fazer aqui.',
             textAlign: TextAlign.center,
             style: TextStyle(color: SatraColors.medium, fontWeight: FontWeight.w600),
           ),
@@ -147,7 +148,7 @@ class _PendingEscapeRecoveryScreenState extends State<PendingEscapeRecoveryScree
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Um escape recente moveu fundos para uma nova carteira, mas a gravação na chave física ainda não foi confirmada. Grave a chave assim que possível — até lá, essas 12 palavras são a única forma de acessar esse saldo.',
+                  'Sua carteira de escape foi criada, mas a gravação na chave física ainda não foi confirmada. Grave a chave assim que possível — até lá, essas 12 palavras são a única forma de acessá-la, inclusive durante um escape futuro.',
                   style: TextStyle(color: Color(0xFF7A1F1F), fontSize: 13, height: 1.3),
                 ),
               ),

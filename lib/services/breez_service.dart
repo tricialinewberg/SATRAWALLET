@@ -17,6 +17,7 @@ class BreezService {
 
   static const _mnemonicKey = 'satra_wallet_mnemonic';
   static const _pendingEscapeMnemonicKey = 'satra_pending_escape_mnemonic';
+  static const _escapeWalletMnemonicKey = 'satra_escape_wallet_mnemonic';
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   final StreamController<int> _balanceController = StreamController<int>.broadcast();
@@ -304,32 +305,64 @@ class BreezService {
   /// "Traga sua carteira" screen.
   Future<String?> getMnemonic() => _secureStorage.read(key: _mnemonicKey);
 
-  /// Persists [mnemonic] as a pending escape-sweep recovery key.
+  /// Persists [mnemonic] as pending an unconfirmed NFC write.
   ///
-  /// The wallet [executeEscapeSweep] creates only ever exists in memory
-  /// and on the physical NFC tag it's written to — it's never saved to
-  /// [_mnemonicKey], since that's reserved for the wallet the PIN opens.
-  /// If the NFC write that follows a sweep fails or times out, that would
-  /// mean the swept funds (already moved before the write is attempted)
-  /// become permanently unreachable: not on the tag (write failed), and
-  /// not in the app (never stored). Call this *before* attempting the
-  /// write, and only [clearPendingEscapeMnemonic] once the write is
-  /// confirmed via [NfcWriteResult.success] — see
-  /// `WalletHomeScreen._sweepToNewWalletAndWriteTag` and
-  /// `PendingEscapeRecoveryScreen`, which lets the user retry the write
-  /// (or view/copy the words directly as a last resort) without repeating
-  /// the sweep itself.
+  /// Historically this protected a per-escape disposable wallet's funds
+  /// while its one-time NFC write was in flight. Since the escape wallet is
+  /// now a single FIXED wallet created once during physical-key setup (see
+  /// [createEscapeWallet]) and never rewritten on subsequent escapes, this
+  /// now protects that SAME setup-time write instead: call it right before
+  /// [NfcKeyPasswordSetupScreen] attempts to write the freshly-generated
+  /// escape wallet to the tag, and only [clearPendingEscapeMnemonic] once
+  /// that write is confirmed via [NfcWriteResult.success]. Either way, the
+  /// escape wallet's mnemonic is *also* durably persisted under
+  /// [_escapeWalletMnemonicKey] regardless of whether the tag write ever
+  /// succeeds — so it's never actually at risk of being lost — but a
+  /// failed/unconfirmed write still means the physical tag doesn't yet
+  /// reflect it, which is what `PendingEscapeRecoveryScreen` lets the user
+  /// retry (or view/copy the words directly as a last resort).
   Future<void> savePendingEscapeMnemonic(String mnemonic) =>
       _secureStorage.write(key: _pendingEscapeMnemonicKey, value: mnemonic);
 
-  /// The pending escape-sweep mnemonic, if a previous escape's NFC write
-  /// hasn't been confirmed successful yet. Null once cleared.
+  /// The pending mnemonic, if a previous NFC write hasn't been confirmed
+  /// successful yet. Null once cleared.
   Future<String?> getPendingEscapeMnemonic() => _secureStorage.read(key: _pendingEscapeMnemonicKey);
 
-  /// Clears the pending escape-sweep mnemonic. Call only once the NFC
-  /// write has been confirmed successful — never on failure/timeout,
-  /// since that's the only remaining path back to the swept funds.
+  /// Clears the pending mnemonic. Call only once the NFC write has been
+  /// confirmed successful — never on failure/timeout, since that's the
+  /// only remaining signal that the tag doesn't yet match what's stored.
   Future<void> clearPendingEscapeMnemonic() => _secureStorage.delete(key: _pendingEscapeMnemonicKey);
+
+  /// Whether a fixed escape wallet has already been configured (see
+  /// [createEscapeWallet]). Callers should confirm with the user before
+  /// calling [createEscapeWallet] again if this is true — it overwrites
+  /// the existing escape wallet, and any balance still on it becomes
+  /// unreachable unless backed up first.
+  Future<bool> hasEscapeWallet() async {
+    final value = await getEscapeWalletMnemonic();
+    return value != null && value.isNotEmpty;
+  }
+
+  /// The fixed escape-wallet mnemonic configured during physical-key setup
+  /// (see [createEscapeWallet]), or null if none has been set up yet.
+  /// [executeEscapeSweep] reads this to know where to sweep funds during a
+  /// real escape — entirely from local storage, never by reading the NFC
+  /// tag, so a real escape never depends on the tag being physically
+  /// present or readable.
+  Future<String?> getEscapeWalletMnemonic() => _secureStorage.read(key: _escapeWalletMnemonicKey);
+
+  /// Generates a brand-new mnemonic and persists it as THE fixed escape
+  /// wallet, overwriting any previous one. Doesn't connect to it or write
+  /// anything to a tag — that's [NfcKeyPasswordSetupScreen]'s job, using
+  /// this mnemonic plus [NfcService.writeRecoveryCredential].
+  ///
+  /// Callers must confirm with the user first if [hasEscapeWallet] is
+  /// already true (see that method's doc comment).
+  Future<String> createEscapeWallet() async {
+    final mnemonic = bip39.generateMnemonic(strength: 128); // 128 bits -> 12 words
+    await _secureStorage.write(key: _escapeWalletMnemonicKey, value: mnemonic);
+    return mnemonic;
+  }
 
   /// Disconnects the current wallet (if any) and reconnects using
   /// [mnemonic] instead, replacing whatever wallet was active before.
@@ -344,23 +377,26 @@ class BreezService {
     await initialize();
   }
 
-  /// Executes the "escape" fund sweep: generates a brand-new, independent
-  /// wallet mnemonic (never persisted to secure storage) and sends this
-  /// wallet's entire balance to it, returning the new mnemonic so the
-  /// caller can write it to a physical NFC key.
+  /// Executes the "escape" fund sweep: sends this wallet's entire balance
+  /// to the FIXED escape wallet at [escapeWalletMnemonic] (see
+  /// [createEscapeWallet]/[getEscapeWalletMnemonic]) — the same one every
+  /// time, created once ahead of time during physical-key setup rather
+  /// than generated fresh on each escape. That matters because it's what
+  /// lets the NFC tag be written once at setup and never touched again:
+  /// the escape handler no longer needs to write anything to a tag at the
+  /// most time-critical, hardware-dependent moment there is.
   ///
   /// The wallet the PIN opens keeps its own persisted mnemonic and stays
   /// the active connection throughout — it simply ends up with a zero
   /// balance. The swept funds are only reachable by whoever restores from
-  /// the physical key afterwards (see [restoreFromMnemonic]), since the
-  /// new mnemonic is returned to the caller but never written to storage
-  /// here.
+  /// the physical key (see [restoreFromMnemonic]) written to it at setup
+  /// time.
   ///
   /// This SDK only supports one live connection at a time, so getting a
-  /// destination on the new wallet requires briefly disconnecting from the
-  /// current wallet, connecting as the new one just long enough to create
-  /// a receiving destination, then reconnecting the original wallet to
-  /// actually send the payment.
+  /// destination on the escape wallet requires briefly disconnecting from
+  /// the current wallet, connecting as the escape wallet just long enough
+  /// to create a receiving destination, then reconnecting the original
+  /// wallet to actually send the payment.
   ///
   /// The destination is a native BOLT11 invoice (via [createInvoice]) paid
   /// through the same direct prepareSendPayment/sendPayment path already
@@ -370,9 +406,9 @@ class BreezService {
   /// (`SdkError.lnurlError` calling `breez.tips/lnurlp/.../invoice`), most
   /// likely because the address isn't immediately queryable on Breez's
   /// LNURL server right after registration. A BOLT11 invoice is generated
-  /// locally by the new wallet's own SDK connection and needs no external
-  /// HTTP round-trip to resolve, sidestepping that propagation delay
-  /// entirely.
+  /// locally by the escape wallet's own SDK connection and needs no
+  /// external HTTP round-trip to resolve, sidestepping that propagation
+  /// delay entirely.
   ///
   /// The invoice is deliberately amount-less: a first attempt fixed it to
   /// the current balance and paid it with that same amount, which failed
@@ -391,33 +427,32 @@ class BreezService {
   /// lib/debug/escape_debug_log.dart) reporting each stage's outcome in
   /// plain terms — remove the parameter and its call sites once escape
   /// delivery is confirmed reliable on-device.
-  Future<String> executeEscapeSweep({void Function(String message)? onStep}) async {
-    onStep?.call('Gerando nova carteira...');
-    final newMnemonic = bip39.generateMnemonic(strength: 128); // 128 bits -> 12 words
-    onStep?.call('Nova carteira gerada.');
-
+  Future<void> executeEscapeSweep({
+    required String escapeWalletMnemonic,
+    void Function(String message)? onStep,
+  }) async {
     final balance = await getBalance();
     onStep?.call('Saldo atual: $balance sats.');
     if (balance <= 0) {
-      onStep?.call('Saldo zero — nada a enviar, apenas a nova chave será gravada.');
-      return newMnemonic;
+      onStep?.call('Saldo zero — nada a enviar.');
+      return;
     }
 
     final originalMnemonic = await _getOrCreateMnemonic();
 
-    onStep?.call('Conectando à nova carteira para gerar uma fatura...');
+    onStep?.call('Conectando à carteira de escape para gerar uma fatura...');
     await disconnect();
-    await _connectWithMnemonic(newMnemonic);
+    await _connectWithMnemonic(escapeWalletMnemonic);
 
-    final String newWalletInvoice;
+    final String escapeWalletInvoice;
     try {
       // No amountSats: an "any amount" invoice, so paying it with
       // FeePolicy.feesIncluded below can legitimately deliver less than
       // the wallet's balance (balance minus the network fee).
-      newWalletInvoice = await createInvoice(null, description: 'Satra escape sweep');
-      onStep?.call('Fatura BOLT11 (sem valor fixo) da nova carteira gerada com sucesso.');
+      escapeWalletInvoice = await createInvoice(null, description: 'Satra escape sweep');
+      onStep?.call('Fatura BOLT11 (sem valor fixo) da carteira de escape gerada com sucesso.');
     } catch (e) {
-      onStep?.call('FALHA ao gerar a fatura da nova carteira: $e');
+      onStep?.call('FALHA ao gerar a fatura da carteira de escape: $e');
       rethrow;
     }
     await disconnect();
@@ -425,10 +460,10 @@ class BreezService {
     onStep?.call('Reconectando à carteira original...');
     await _connectWithMnemonic(originalMnemonic);
 
-    onStep?.call('Enviando $balance sats (taxa de rede incluída) para a nova carteira...');
+    onStep?.call('Enviando $balance sats (taxa de rede incluída) para a carteira de escape...');
     try {
       await sendPayment(
-        newWalletInvoice,
+        escapeWalletInvoice,
         amountSats: balance,
         feePolicy: FeePolicy.feesIncluded,
       );
@@ -437,8 +472,6 @@ class BreezService {
       onStep?.call('FALHA ao enviar o pagamento: $e');
       rethrow;
     }
-
-    return newMnemonic;
   }
 
   Future<void> disconnect() async {

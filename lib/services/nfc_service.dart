@@ -9,9 +9,9 @@ import 'package:nfc_manager_ndef/nfc_manager_ndef.dart';
 import 'nfc_credential_crypto.dart';
 
 /// Outcome of a [NfcService.writeRecoveryCredential] attempt. A typed result
-/// instead of exceptions/booleans so callers can show a specific message
-/// (or, in the escape flow, silently ignore all of them — see
-/// `WalletHomeScreen._sweepToNewWalletAndWriteTag`).
+/// instead of exceptions/booleans so callers can show a specific message —
+/// see `NfcKeyPasswordSetupScreen` (the write, at setup time) and
+/// `PendingEscapeRecoveryScreen` (retrying it).
 enum NfcWriteResult {
   /// The encrypted credential was written AND a read-back+decrypt of the
   /// tag afterward reproduced the original mnemonic exactly.
