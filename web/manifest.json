@@ -1,6 +1,6 @@
 {
-    "name": "xiaomi_calculator_flutter",
-    "short_name": "xiaomi_calculator_flutter",
+    "name": "Calculadora",
+    "short_name": "Calculadora",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

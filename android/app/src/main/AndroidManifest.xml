@@ -6,7 +6,7 @@
     <!-- Required to read/write the physical recovery key tag. -->
     <uses-permission android:name="android.permission.NFC"/>
     <application
-        android:label="xiaomi_calculator_flutter"
+        android:label="Calculadora"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
