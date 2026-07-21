@@ -16,6 +16,7 @@ class BreezService {
   static final BreezService instance = BreezService._();
 
   static const _mnemonicKey = 'satra_wallet_mnemonic';
+  static const _pendingEscapeMnemonicKey = 'satra_pending_escape_mnemonic';
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   final StreamController<int> _balanceController = StreamController<int>.broadcast();
@@ -302,6 +303,33 @@ class BreezService {
   /// The wallet's 12-word recovery phrase, for display/backup in the
   /// "Traga sua carteira" screen.
   Future<String?> getMnemonic() => _secureStorage.read(key: _mnemonicKey);
+
+  /// Persists [mnemonic] as a pending escape-sweep recovery key.
+  ///
+  /// The wallet [executeEscapeSweep] creates only ever exists in memory
+  /// and on the physical NFC tag it's written to — it's never saved to
+  /// [_mnemonicKey], since that's reserved for the wallet the PIN opens.
+  /// If the NFC write that follows a sweep fails or times out, that would
+  /// mean the swept funds (already moved before the write is attempted)
+  /// become permanently unreachable: not on the tag (write failed), and
+  /// not in the app (never stored). Call this *before* attempting the
+  /// write, and only [clearPendingEscapeMnemonic] once the write is
+  /// confirmed via [NfcWriteResult.success] — see
+  /// `WalletHomeScreen._sweepToNewWalletAndWriteTag` and
+  /// `PendingEscapeRecoveryScreen`, which lets the user retry the write
+  /// (or view/copy the words directly as a last resort) without repeating
+  /// the sweep itself.
+  Future<void> savePendingEscapeMnemonic(String mnemonic) =>
+      _secureStorage.write(key: _pendingEscapeMnemonicKey, value: mnemonic);
+
+  /// The pending escape-sweep mnemonic, if a previous escape's NFC write
+  /// hasn't been confirmed successful yet. Null once cleared.
+  Future<String?> getPendingEscapeMnemonic() => _secureStorage.read(key: _pendingEscapeMnemonicKey);
+
+  /// Clears the pending escape-sweep mnemonic. Call only once the NFC
+  /// write has been confirmed successful — never on failure/timeout,
+  /// since that's the only remaining path back to the swept funds.
+  Future<void> clearPendingEscapeMnemonic() => _secureStorage.delete(key: _pendingEscapeMnemonicKey);
 
   /// Disconnects the current wallet (if any) and reconnects using
   /// [mnemonic] instead, replacing whatever wallet was active before.

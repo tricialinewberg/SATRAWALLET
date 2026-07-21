@@ -70,6 +70,21 @@ class SideMenuScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Divider(color: Colors.white24, height: 1),
+            FutureBuilder<String?>(
+              future: BreezService.instance.getPendingEscapeMnemonic(),
+              builder: (context, snapshot) {
+                final hasPending = snapshot.data != null && snapshot.data!.isNotEmpty;
+                if (!hasPending) return const SizedBox.shrink();
+                return _MenuTile(
+                  icon: Icons.warning_amber_rounded,
+                  label: 'Concluir gravação pendente',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).pushNamed(SatraRoutes.pendingEscapeRecovery);
+                  },
+                );
+              },
+            ),
             _MenuTile(
               icon: Icons.credit_card,
               label: 'Traga sua carteira',

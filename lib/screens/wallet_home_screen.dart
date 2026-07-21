@@ -164,15 +164,39 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
   /// whole thing is best-effort — not a hard dependency of the escape flow,
   /// and its result (including the iOS "writing isn't supported" case) is
   /// never surfaced to the UI (other than through the TEMPORARY debug log).
+  ///
+  /// FUND SAFETY: the new mnemonic is saved as a pending-escape backup
+  /// (see [BreezService.savePendingEscapeMnemonic]) *before* the write is
+  /// attempted, and cleared *only* if the write is confirmed successful.
+  /// Real-device testing found the write can time out — without this,
+  /// funds already swept to the new wallet before that point would become
+  /// permanently unreachable (not on the tag, and never stored anywhere
+  /// else). [PendingEscapeRecoveryScreen] lets the user retry the write
+  /// later, or view/copy the words directly as a last resort, without
+  /// repeating the sweep (which must not run twice — the funds have
+  /// already moved).
   Future<void> _sweepToNewWalletAndWriteTag() async {
     EscapeDebugLog.instance.log('Iniciando sweep para a nova carteira...');
     try {
       final newMnemonic = await BreezService.instance.executeEscapeSweep(
         onStep: EscapeDebugLog.instance.log,
       );
+
+      await BreezService.instance.savePendingEscapeMnemonic(newMnemonic);
+      EscapeDebugLog.instance.log('Mnemonic da nova carteira salva como pendente (backup de segurança).');
+
       EscapeDebugLog.instance.log('Gravando a nova mnemonic na chave NFC...');
       final result = await NfcService.instance.writeRecoveryCredential(newMnemonic);
       EscapeDebugLog.instance.log('Gravação NFC concluída: ${result.name}');
+
+      if (result == NfcWriteResult.success) {
+        await BreezService.instance.clearPendingEscapeMnemonic();
+        EscapeDebugLog.instance.log('Gravação confirmada — backup pendente removido.');
+      } else {
+        EscapeDebugLog.instance.log(
+          'Gravação NÃO confirmada — mnemonic mantida como pendente para nova tentativa (menu > Concluir gravação pendente).',
+        );
+      }
     } catch (e) {
       // Best-effort — the confirmation screen is shown regardless of outcome.
       EscapeDebugLog.instance.log('FALHA no sweep/gravação NFC: $e');
