@@ -53,8 +53,16 @@ class BreezService {
   Future<void> initialize() async {
     final inFlight = _initializing;
     if (inFlight != null) return inFlight;
+    await _connectWithMnemonic(null);
+  }
 
-    final attempt = _doInitialize();
+  /// Connects using [mnemonic], or the stored/generated wallet mnemonic if
+  /// null, and records the attempt in [_initializing] the same way
+  /// [initialize] does — so a later plain [initialize]/[sendPayment] call
+  /// that runs while (or right after) this one is in flight sees it as the
+  /// current connection instead of racing to reconnect a second time.
+  Future<void> _connectWithMnemonic(String? mnemonic) async {
+    final attempt = _doInitialize(mnemonicOverride: mnemonic);
     _initializing = attempt;
     try {
       await attempt;
@@ -64,13 +72,13 @@ class BreezService {
     }
   }
 
-  Future<void> _doInitialize() async {
+  Future<void> _doInitialize({String? mnemonicOverride}) async {
     if (!_frbInitialized) {
       await BreezSdkSparkLib.init();
       _frbInitialized = true;
     }
 
-    final mnemonic = await _getOrCreateMnemonic();
+    final mnemonic = mnemonicOverride ?? await _getOrCreateMnemonic();
     final apiKey = dotenv.env['BREEZ_API_KEY'] ?? '';
     final config = defaultConfig(network: Network.mainnet).copyWith(apiKey: apiKey);
     final seed = Seed.mnemonic(mnemonic: mnemonic, passphrase: null);
@@ -291,6 +299,42 @@ class BreezService {
     await disconnect();
     await _secureStorage.write(key: _mnemonicKey, value: trimmed);
     await initialize();
+  }
+
+  /// Executes the "escape" fund sweep: generates a brand-new, independent
+  /// wallet mnemonic (never persisted to secure storage) and sends this
+  /// wallet's entire balance to it, returning the new mnemonic so the
+  /// caller can write it to a physical NFC key.
+  ///
+  /// The wallet the PIN opens keeps its own persisted mnemonic and stays
+  /// the active connection throughout — it simply ends up with a zero
+  /// balance. The swept funds are only reachable by whoever restores from
+  /// the physical key afterwards (see [restoreFromMnemonic]), since the
+  /// new mnemonic is returned to the caller but never written to storage
+  /// here.
+  ///
+  /// This SDK only supports one live connection at a time, so learning the
+  /// new wallet's receiving address requires briefly disconnecting from
+  /// the current wallet, connecting as the new one just long enough to
+  /// register/read its Lightning Address, then reconnecting the original
+  /// wallet to actually send the payment.
+  Future<String> executeEscapeSweep() async {
+    final newMnemonic = bip39.generateMnemonic(strength: 128); // 128 bits -> 12 words
+
+    final balance = await getBalance();
+    if (balance <= 0) return newMnemonic;
+
+    final originalMnemonic = await _getOrCreateMnemonic();
+
+    await disconnect();
+    await _connectWithMnemonic(newMnemonic);
+    final newWalletAddress = await getLightningAddress();
+    await disconnect();
+
+    await _connectWithMnemonic(originalMnemonic);
+    await sendPayment(newWalletAddress, amountSats: balance);
+
+    return newMnemonic;
   }
 
   Future<void> disconnect() async {

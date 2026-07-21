@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart';
 import 'package:flutter/material.dart';
 
+import '../route_observer.dart';
 import '../routes.dart';
 import '../services/breez_service.dart';
 import '../services/nfc_service.dart';
@@ -29,7 +30,7 @@ class WalletHomeScreen extends StatefulWidget {
   State<WalletHomeScreen> createState() => _WalletHomeScreenState();
 }
 
-class _WalletHomeScreenState extends State<WalletHomeScreen> {
+class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
   bool _balanceHidden = false;
   late final Future<void> _connectFuture;
 
@@ -37,6 +38,50 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   void initState() {
     super.initState();
     _connectFuture = BreezService.instance.initialize();
+    _startNfcListening();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute<void>) {
+      satraRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void dispose() {
+    satraRouteObserver.unsubscribe(this);
+    NfcService.instance.stopListening();
+    super.dispose();
+  }
+
+  /// Pauses ambient listening while another screen (e.g. [NfcTransferScreen],
+  /// which runs its own NFC session) is pushed on top of this one.
+  @override
+  void didPushNext() {
+    NfcService.instance.stopListening();
+  }
+
+  /// Resumes ambient listening once this screen is back on top.
+  @override
+  void didPopNext() {
+    _startNfcListening();
+  }
+
+  /// Listens for the physical recovery key while the wallet is in normal
+  /// use, so tapping it navigates straight to [NfcTransferScreen] without
+  /// the user needing to find it via the side menu first. Errors (an
+  /// unreadable/unrelated tag) are ignored — this is ambient background
+  /// listening, not a screen the user is actively watching for feedback.
+  void _startNfcListening() {
+    NfcService.instance.startListeningForKey(
+      onKeyDetected: (mnemonic) {
+        if (!mounted) return;
+        Navigator.of(context).pushNamed(SatraRoutes.nfcTransfer);
+      },
+    );
   }
 
   static String _formatBrl(double value) {
@@ -92,43 +137,30 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
 
   void _onEscapeConfirmed() {
     // None of these are awaited — the user must see the confirmation screen
-    // immediately, regardless of how long the Breez send, a slow Nostr
+    // immediately, regardless of how long the Breez sweep, a slow Nostr
     // relay, or waiting for an NFC tag takes.
-    unawaited(_sweepBalanceToSelf());
+    unawaited(_sweepToNewWalletAndWriteTag());
     unawaited(NostrService.instance.sendEscapeAlert());
-    unawaited(_writeRecoveryKeyToTag());
     Navigator.of(context).pushNamedAndRemoveUntil(
       SatraRoutes.escapeConfirmation,
       (route) => false,
     );
   }
 
-  /// Opportunistically writes the wallet's recovery mnemonic to a physical
-  /// NFC key, if one happens to be presented within the write timeout. The
-  /// user may not have the key on hand at the exact moment they escape, so
-  /// this is a best-effort extra — not a hard dependency of the escape
-  /// flow, and its result (including the iOS "writing isn't supported"
-  /// case) is never surfaced to the UI.
-  Future<void> _writeRecoveryKeyToTag() async {
+  /// Generates a brand-new wallet, sweeps this wallet's entire balance into
+  /// it, then opportunistically writes the NEW wallet's mnemonic to a
+  /// physical NFC key if one happens to be presented within the write
+  /// timeout — never this wallet's own mnemonic, since that one stays
+  /// behind (now empty) as the wallet the normal PIN opens. The write step
+  /// must run after the sweep since it needs the sweep's new mnemonic, and
+  /// the user may not have the key on hand at this exact moment, so the
+  /// whole thing is best-effort — not a hard dependency of the escape flow,
+  /// and its result (including the iOS "writing isn't supported" case) is
+  /// never surfaced to the UI.
+  Future<void> _sweepToNewWalletAndWriteTag() async {
     try {
-      final mnemonic = await BreezService.instance.getMnemonic();
-      if (mnemonic == null || mnemonic.isEmpty) return;
-      await NfcService.instance.writeRecoveryCredential(mnemonic);
-    } catch (_) {
-      // Best-effort — see doc comment above.
-    }
-  }
-
-  /// Sends the wallet's full balance to its own Lightning address. This
-  /// wallet's mnemonic is what actually gets written to the physical key
-  /// (see [_writeRecoveryKeyToTag]) — this self-send just exercises the
-  /// Breez send path without moving funds to an invented destination.
-  Future<void> _sweepBalanceToSelf() async {
-    try {
-      final balance = await BreezService.instance.getBalance();
-      if (balance <= 0) return;
-      final address = await BreezService.instance.getLightningAddress();
-      await BreezService.instance.sendPayment(address, amountSats: balance);
+      final newMnemonic = await BreezService.instance.executeEscapeSweep();
+      await NfcService.instance.writeRecoveryCredential(newMnemonic);
     } catch (_) {
       // Best-effort — the confirmation screen is shown regardless of outcome.
     }

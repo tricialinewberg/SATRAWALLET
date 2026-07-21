@@ -6,9 +6,10 @@ import '../services/breez_service.dart';
 import '../theme/colors.dart';
 
 /// Right-side drawer opened from [WalletHomeScreen]'s hamburger icon.
-/// "Traga sua carteira" (view/restore mnemonic), "Rede de confiança"
-/// (trusted contacts) and "Trocar PIN" are wired — the rest are
-/// placeholders until their screens/services exist.
+/// "Traga sua carteira" offers a choice between restoring from a written-down
+/// seed phrase or from a physical NFC key, "Rede de confiança" (trusted
+/// contacts) and "Trocar PIN" are wired — the rest are placeholders until
+/// their screens/services exist.
 class SideMenuScreen extends StatelessWidget {
   const SideMenuScreen({super.key});
 
@@ -74,7 +75,7 @@ class SideMenuScreen extends StatelessWidget {
               label: 'Traga sua carteira',
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(context).pushNamed(SatraRoutes.walletBackup);
+                _showRestoreChooser(context);
               },
             ),
             _MenuTile(
@@ -113,6 +114,59 @@ class SideMenuScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Lets the user pick how they want to restore/view their wallet: typing in
+/// a seed phrase ([WalletBackupScreen]) or tapping a physical NFC key
+/// ([NfcTransferScreen]).
+void _showRestoreChooser(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: SatraColors.light.withValues(alpha: 0.95),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Text(
+                'Como você quer trazer sua carteira?',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold, color: SatraColors.navy, fontSize: 16),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.key_outlined, color: SatraColors.navy),
+              title: const Text(
+                'Restaurar com seed',
+                style: TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w600),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                Navigator.of(context).pushNamed(SatraRoutes.walletBackup);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.nfc, color: SatraColors.navy),
+              title: const Text(
+                'Restaurar com chave física',
+                style: TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w600),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                Navigator.of(context).pushNamed(SatraRoutes.nfcTransfer);
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _MenuTile extends StatelessWidget {

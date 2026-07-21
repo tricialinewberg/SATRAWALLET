@@ -9,7 +9,7 @@ import 'package:nfc_manager_ndef/nfc_manager_ndef.dart';
 /// Outcome of a [NfcService.writeRecoveryCredential] attempt. A typed result
 /// instead of exceptions/booleans so callers can show a specific message
 /// (or, in the escape flow, silently ignore all of them — see
-/// `WalletHomeScreen._writeRecoveryKey`).
+/// `WalletHomeScreen._sweepToNewWalletAndWriteTag`).
 enum NfcWriteResult {
   /// The mnemonic was written to the tag.
   success,

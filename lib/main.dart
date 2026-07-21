@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'route_observer.dart';
 import 'routes.dart';
 import 'screens/calculator_screen.dart';
 import 'screens/escape_confirmation_screen.dart';
@@ -31,6 +32,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
       ),
       initialRoute: SatraRoutes.calculator,
+      navigatorObservers: [satraRouteObserver],
       routes: {
         SatraRoutes.calculator: (context) => const CalculatorScreen(),
         SatraRoutes.splash: (context) => const SplashScreen(),
