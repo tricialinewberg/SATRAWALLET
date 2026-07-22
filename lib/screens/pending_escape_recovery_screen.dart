@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import '../services/breez_service.dart';
 import '../services/nfc_service.dart';
 import '../theme/colors.dart';
-import '../widgets/app_scrollbar.dart';
 import '../widgets/nfc_password_prompt.dart';
 
 /// Fund-safety net for a failed/interrupted NFC write during physical-key
@@ -34,18 +33,11 @@ class _PendingEscapeRecoveryScreenState extends State<PendingEscapeRecoveryScree
   bool _writing = false;
   bool _revealed = false;
   NfcWriteResult? _lastResult;
-  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _pendingFuture = BreezService.instance.getPendingEscapeMnemonic();
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
   }
 
   Future<void> _retryWrite(String mnemonic) async {
@@ -137,12 +129,9 @@ class _PendingEscapeRecoveryScreenState extends State<PendingEscapeRecoveryScree
 
   Widget _buildPending(String mnemonic) {
     final words = mnemonic.split(RegExp(r'\s+'));
-    return AppScrollbar(
-      controller: _scrollController,
-      child: ListView(
-        controller: _scrollController,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        children: [
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      children: [
         _buildHeader(),
         const SizedBox(height: 12),
         Container(
@@ -289,7 +278,6 @@ class _PendingEscapeRecoveryScreenState extends State<PendingEscapeRecoveryScree
         ),
         const SizedBox(height: 24),
       ],
-      ),
     );
   }
 

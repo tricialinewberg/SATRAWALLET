@@ -7,7 +7,6 @@ import '../routes.dart';
 import '../services/breez_service.dart';
 import '../services/nostr_service.dart';
 import '../theme/colors.dart';
-import '../widgets/app_scrollbar.dart';
 
 /// "Traga sua carteira": view/copy the current wallet's 12-word recovery
 /// phrase, or paste an existing one to replace the current wallet with it.
@@ -22,7 +21,6 @@ class WalletBackupScreen extends StatefulWidget {
 class _WalletBackupScreenState extends State<WalletBackupScreen> {
   late final Future<String?> _mnemonicFuture;
   final _restoreController = TextEditingController();
-  final _scrollController = ScrollController();
   bool _restoring = false;
 
   /// Whether the recovery phrase is currently shown in the clear. Starts
@@ -41,7 +39,6 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
   @override
   void dispose() {
     _restoreController.dispose();
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -113,12 +110,9 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
     return Scaffold(
       backgroundColor: SatraColors.background,
       body: SafeArea(
-        child: AppScrollbar(
-          controller: _scrollController,
-          child: ListView(
-            controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            children: [
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          children: [
             Row(
               children: [
                 IconButton(
@@ -307,7 +301,6 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
             ),
             const SizedBox(height: 24),
           ],
-          ),
         ),
       ),
     );

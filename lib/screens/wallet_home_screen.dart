@@ -10,7 +10,6 @@ import '../services/breez_service.dart';
 import '../services/nfc_service.dart';
 import '../services/nostr_service.dart';
 import '../theme/colors.dart';
-import '../widgets/app_scrollbar.dart';
 import 'side_menu_screen.dart';
 
 String _formatThousands(int value) {
@@ -36,18 +35,28 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
   bool _balanceHidden = false;
   late final Future<void> _connectFuture;
 
-  // Drives the quick "balance just bumped" scale animation, plus the toast
-  // below, whenever a new *completed* incoming payment is seen — not on
-  // every balanceStream/paymentsStream emission, which also fires on plain
+  // Drives the "payment received" banner (see [_buildPaymentBanner]) shown
+  // whenever a new *completed* incoming payment is seen — not on every
+  // balanceStream/paymentsStream emission, which also fires on plain
   // re-syncs and on outgoing payments (e.g. the escape sweep).
-  late final AnimationController _balanceBumpController;
-  late final Animation<double> _balanceBumpScale;
+  late final AnimationController _paymentBannerController;
+  late final Animation<double> _paymentBannerOpacity;
+  late final Animation<double> _paymentBannerScale;
+  late final Animation<Offset> _paymentBannerSlide;
+  String? _paymentBannerText;
   StreamSubscription<List<Payment>>? _paymentsSubscription;
   final Set<String> _seenCompletedReceiveIds = {};
   bool _paymentsBaselineSet = false;
-  final _transactionsScrollController = ScrollController();
 
-  static const _balanceBumpDuration = Duration(milliseconds: 420);
+  // Entrance (fade/scale/slide in) -> hold (fully visible) -> exit (fade
+  // out); expressed as millisecond weights so the total controller
+  // duration and each phase's proportional share both stay in one place.
+  static const _paymentBannerEntranceMs = 350;
+  static const _paymentBannerHoldMs = 2200;
+  static const _paymentBannerExitMs = 450;
+  static const _paymentBannerDuration = Duration(
+    milliseconds: _paymentBannerEntranceMs + _paymentBannerHoldMs + _paymentBannerExitMs,
+  );
 
   @override
   void initState() {
@@ -55,17 +64,38 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
     _connectFuture = BreezService.instance.initialize();
     _startNfcListening();
 
-    _balanceBumpController = AnimationController(vsync: this, duration: _balanceBumpDuration);
-    _balanceBumpScale = TweenSequence<double>([
+    _paymentBannerController = AnimationController(vsync: this, duration: _paymentBannerDuration);
+    _paymentBannerOpacity = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.16).chain(CurveTween(curve: Curves.easeOut)),
-        weight: 45,
+        tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
+        weight: _paymentBannerEntranceMs.toDouble(),
+      ),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: _paymentBannerHoldMs.toDouble()),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        weight: _paymentBannerExitMs.toDouble(),
+      ),
+    ]).animate(_paymentBannerController);
+    _paymentBannerScale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.88, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
+        weight: _paymentBannerEntranceMs.toDouble(),
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.16, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
-        weight: 55,
+        tween: ConstantTween(1.0),
+        weight: (_paymentBannerHoldMs + _paymentBannerExitMs).toDouble(),
       ),
-    ]).animate(_balanceBumpController);
+    ]).animate(_paymentBannerController);
+    _paymentBannerSlide = TweenSequence<Offset>([
+      TweenSequenceItem(
+        tween: Tween(begin: const Offset(0, -0.3), end: Offset.zero).chain(CurveTween(curve: Curves.easeOut)),
+        weight: _paymentBannerEntranceMs.toDouble(),
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween(Offset.zero),
+        weight: (_paymentBannerHoldMs + _paymentBannerExitMs).toDouble(),
+      ),
+    ]).animate(_paymentBannerController);
     _paymentsSubscription = BreezService.instance.paymentsStream.listen(_onPaymentsUpdate);
   }
 
@@ -94,33 +124,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
 
   void _onIncomingPayment(Payment payment) {
     if (!mounted) return;
-    _balanceBumpController.forward(from: 0);
-
     final amountText = _formatThousands(payment.amount.toInt());
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: SatraColors.navy,
-        duration: const Duration(milliseconds: 1800),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle, color: Color(0xFF3FBF6F), size: 20),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                '+$amountText sats recebidos',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    setState(() => _paymentBannerText = '+$amountText sats recebidos');
+    _paymentBannerController.forward(from: 0);
   }
 
   @override
@@ -137,8 +143,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
     satraRouteObserver.unsubscribe(this);
     NfcService.instance.stopListening();
     _paymentsSubscription?.cancel();
-    _balanceBumpController.dispose();
-    _transactionsScrollController.dispose();
+    _paymentBannerController.dispose();
     super.dispose();
   }
 
@@ -297,23 +302,25 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
       endDrawer: const SideMenuScreen(),
       body: SafeArea(
         child: Builder(
-          builder: (context) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          builder: (context) => Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Column(
                   children: [
-                    IconButton(
-                      icon: Icon(_balanceHidden ? Icons.visibility_off : Icons.visibility, color: SatraColors.medium),
-                      onPressed: () => setState(() => _balanceHidden = !_balanceHidden),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: Icon(_balanceHidden ? Icons.visibility_off : Icons.visibility, color: SatraColors.medium),
+                          onPressed: () => setState(() => _balanceHidden = !_balanceHidden),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.menu, color: SatraColors.navy),
+                          onPressed: () => Scaffold.of(context).openEndDrawer(),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.menu, color: SatraColors.navy),
-                      onPressed: () => Scaffold.of(context).openEndDrawer(),
-                    ),
-                  ],
-                ),
                 FutureBuilder<void>(
                   future: _connectFuture,
                   builder: (context, connectSnapshot) {
@@ -347,27 +354,24 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
 
                         return Column(
                           children: [
-                            ScaleTransition(
-                              scale: _balanceBumpScale,
-                              child: Text.rich(
-                                TextSpan(
-                                  children: [
-                                    TextSpan(
-                                      text: _balanceHidden
-                                          ? '*****'
-                                          : (sats != null ? _formatThousands(sats) : '···'),
-                                      style: const TextStyle(
-                                        fontSize: 30,
-                                        fontWeight: FontWeight.w900,
-                                        color: SatraColors.navy,
-                                      ),
+                            Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: _balanceHidden
+                                        ? '*****'
+                                        : (sats != null ? _formatThousands(sats) : '···'),
+                                    style: const TextStyle(
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.w900,
+                                      color: SatraColors.navy,
                                     ),
-                                    const TextSpan(
-                                      text: '  Sats',
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SatraColors.navy),
-                                    ),
-                                  ],
-                                ),
+                                  ),
+                                  const TextSpan(
+                                    text: '  Sats',
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SatraColors.navy),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -454,15 +458,11 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                             ],
                           );
                         }
-                        return AppScrollbar(
-                          controller: _transactionsScrollController,
-                          child: ListView.separated(
-                            controller: _transactionsScrollController,
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            itemCount: payments.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1, color: SatraColors.background),
-                            itemBuilder: (context, index) => _TransactionRow(payment: payments[index]),
-                          ),
+                        return ListView.separated(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          itemCount: payments.length,
+                          separatorBuilder: (context, index) => const Divider(height: 1, color: SatraColors.background),
+                          itemBuilder: (context, index) => _TransactionRow(payment: payments[index]),
                         );
                       },
                     ),
@@ -476,6 +476,67 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                   onPressed: _openEscapeInfo,
                 ),
               ],
+            ),
+              ),
+              _buildPaymentBanner(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Centered, near-top banner shown on top of the rest of the screen
+  /// while [_paymentBannerController] is active — fades/scales/slides in,
+  /// holds fully visible, then fades out (see the phase durations above).
+  /// Purely decorative, so it never intercepts touches.
+  Widget _buildPaymentBanner() {
+    return Positioned(
+      top: 72,
+      left: 24,
+      right: 24,
+      child: IgnorePointer(
+        child: Center(
+          child: FadeTransition(
+            opacity: _paymentBannerOpacity,
+            child: SlideTransition(
+              position: _paymentBannerSlide,
+              child: ScaleTransition(
+                scale: _paymentBannerScale,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: SatraColors.navy,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: const BoxDecoration(color: Color(0xFF3FBF6F), shape: BoxShape.circle),
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.arrow_downward, color: Colors.white, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          _paymentBannerText ?? '',
+                          style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ),

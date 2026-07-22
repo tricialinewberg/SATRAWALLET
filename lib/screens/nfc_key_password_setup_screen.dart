@@ -5,7 +5,6 @@ import '../services/nfc_credential_crypto.dart';
 import '../services/nfc_key_password_service.dart';
 import '../services/nfc_service.dart';
 import '../theme/colors.dart';
-import '../widgets/app_scrollbar.dart';
 
 /// Sets up the physical NFC recovery key: saves the password used to
 /// encrypt it, generates a brand-new FIXED escape wallet, and writes that
@@ -28,7 +27,6 @@ class NfcKeyPasswordSetupScreen extends StatefulWidget {
 class _NfcKeyPasswordSetupScreenState extends State<NfcKeyPasswordSetupScreen> {
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
-  final _scrollController = ScrollController();
   late Future<bool> _hasEscapeWalletFuture;
   bool _obscure = true;
   bool _saving = false;
@@ -45,7 +43,6 @@ class _NfcKeyPasswordSetupScreenState extends State<NfcKeyPasswordSetupScreen> {
   void dispose() {
     _passwordController.dispose();
     _confirmController.dispose();
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -166,12 +163,9 @@ class _NfcKeyPasswordSetupScreenState extends State<NfcKeyPasswordSetupScreen> {
     return Scaffold(
       backgroundColor: SatraColors.background,
       body: SafeArea(
-        child: AppScrollbar(
-          controller: _scrollController,
-          child: ListView(
-            controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            children: [
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          children: [
             Row(
               children: [
                 IconButton(
@@ -280,7 +274,6 @@ class _NfcKeyPasswordSetupScreenState extends State<NfcKeyPasswordSetupScreen> {
             ],
             const SizedBox(height: 24),
           ],
-          ),
         ),
       ),
     );
