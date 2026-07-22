@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import 'debug/escape_debug_log.dart';
 import 'route_observer.dart';
 import 'routes.dart';
 import 'screens/calculator_screen.dart';
@@ -35,7 +34,6 @@ class MyApp extends StatelessWidget {
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.black,
       ),
-      navigatorKey: satraNavigatorKey, // TEMPORARY — see lib/debug/escape_debug_log.dart
       initialRoute: SatraRoutes.calculator,
       navigatorObservers: [satraRouteObserver],
       routes: {

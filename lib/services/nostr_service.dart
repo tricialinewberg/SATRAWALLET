@@ -341,26 +341,10 @@ class NostrService {
   /// cancel this work. The only way it wouldn't finish is the OS killing
   /// the process outright, which is outside Flutter's control either way.
   ///
-  /// TEMPORARY: logs every step via [debugPrint] and, if [onStep] is
-  /// given, also reports it in plain terms for an on-screen debug panel
-  /// (see lib/debug/escape_debug_log.dart). Remove [onStep] and its call
-  /// sites once alert delivery is confirmed reliable.
-  Future<void> sendEscapeAlert({
-    String message = 'Alerta ativado. Preciso de ajuda.',
-    void Function(String message)? onStep,
-  }) async {
+  Future<void> sendEscapeAlert({String message = 'Alerta ativado. Preciso de ajuda.'}) async {
     final contacts = await getContacts();
-    debugPrint('[NostrService] sendEscapeAlert: ${contacts.length} trusted contact(s) registered');
-    onStep?.call('Nostr: ${contacts.length} contato(s) de confiança cadastrado(s).');
-    if (contacts.isEmpty) {
-      debugPrint('[NostrService] sendEscapeAlert: no trusted contacts, nothing to send');
-      onStep?.call('Nostr: nenhum contato cadastrado — nada a enviar.');
-      return;
-    }
-
-    final succeeded = await sendDirectMessageToAll(contacts, message, onStep: onStep);
-    debugPrint('[NostrService] sendEscapeAlert: finished processing all contacts');
-    onStep?.call('Nostr: concluído — $succeeded de ${contacts.length} contato(s) confirmado(s) por ao menos um relay.');
+    if (contacts.isEmpty) return;
+    await sendDirectMessageToAll(contacts, message);
   }
 
   /// Sends [message] as a NIP-17 encrypted, NIP-59 gift-wrapped DM to every
@@ -373,20 +357,14 @@ class NostrService {
   /// Returns how many recipients had at least one relay confirm acceptance
   /// (`OK true`). Never throws — a bad npub or an unreachable relay for one
   /// recipient must not stop delivery to the rest; see [_alertContact].
-  Future<int> sendDirectMessageToAll(
-    List<TrustedContact> recipients,
-    String message, {
-    void Function(String message)? onStep,
-  }) async {
+  Future<int> sendDirectMessageToAll(List<TrustedContact> recipients, String message) async {
     if (recipients.isEmpty) return 0;
 
     final keys = await _getOrCreateKeys();
-    debugPrint('[NostrService] sendDirectMessageToAll: sending from npub=${keys.npub} to ${recipients.length} recipient(s)');
-
     var succeeded = 0;
     await Future.wait(
       recipients.map((recipient) async {
-        final accepted = await _alertContact(keys: keys, contact: recipient, message: message, onStep: onStep);
+        final accepted = await _alertContact(keys: keys, contact: recipient, message: message);
         if (accepted) succeeded++;
       }),
     );
@@ -401,85 +379,48 @@ class NostrService {
     required Keys keys,
     required TrustedContact contact,
     required String message,
-    void Function(String message)? onStep,
   }) async {
     final label = contact.label;
     try {
-      debugPrint('[NostrService] "$label": decoding npub ${contact.npub}');
       final decoded = Bech32Entity.decode(payload: contact.npub);
       if (decoded.prefix != Nip19Prefix.npub) {
-        final msg = 'Nostr "$label": FALHA — prefixo decodificado é ${decoded.prefix}, não npub';
-        debugPrint('[NostrService] $msg');
-        onStep?.call(msg);
+        debugPrint('[NostrService] "$label": FALHA — prefixo decodificado é ${decoded.prefix}, não npub');
         return false;
       }
-      final recipientPubkey = decoded.data;
-      debugPrint('[NostrService] "$label": decoded pubkey=$recipientPubkey');
-      onStep?.call('Nostr "$label": npub decodificada com sucesso.');
 
       final giftWrap = await Nip17.create(
         message: message,
         authorSecretKey: keys.secret,
-        recipientPubkey: recipientPubkey,
+        recipientPubkey: decoded.data,
       );
-      debugPrint('[NostrService] "$label": gift wrap created id=${giftWrap.id} kind=${giftWrap.kind}');
-      onStep?.call('Nostr "$label": mensagem cifrada criada com sucesso.');
-
-      final accepted = await _publishToAllRelays(label, giftWrap, onStep: onStep);
-      debugPrint('[NostrService] "$label": done publishing to all relays (accepted=$accepted)');
-      onStep?.call(
-        accepted
-            ? 'Nostr "$label": confirmado por ao menos um relay.'
-            : 'Nostr "$label": FALHA — nenhum relay confirmou o recebimento.',
-      );
-      return accepted;
-    } catch (e, st) {
+      return await _publishToAllRelays(label, giftWrap);
+    } catch (e) {
       // Best-effort: one bad contact must not stop alerts to the rest.
       debugPrint('[NostrService] "$label": FAILED — $e');
-      debugPrint('[NostrService] "$label": $st');
-      onStep?.call('Nostr "$label": FALHA — $e');
       return false;
     }
   }
 
-  Future<bool> _publishToAllRelays(
-    String contactLabel,
-    Event event, {
-    void Function(String message)? onStep,
-  }) async {
+  Future<bool> _publishToAllRelays(String contactLabel, Event event) async {
     final frame = event.serialize();
-    debugPrint(
-      '[NostrService] "$contactLabel": publishing event id=${event.id} to ${_relays.length} relay(s)',
-    );
     final results = await Future.wait(
-      _relays.map((relay) => _publishToRelay(contactLabel, relay, frame, onStep: onStep)),
+      _relays.map((relay) => _publishToRelay(contactLabel, relay, frame)),
     );
     return results.any((accepted) => accepted);
   }
 
-  /// Connects to [relayUrl], publishes [frame], and — unlike before — waits
-  /// briefly for the relay's `["OK", id, accepted, message]` (or `NOTICE`)
-  /// response before closing, logging whatever comes back (or the absence
-  /// of a response). Previously this closed the socket immediately after
-  /// `add()`, which gave zero visibility into whether a relay actually
-  /// accepted the event (e.g. rejected for a bad signature, an
-  /// unsupported/rate-limited kind, or some other policy reason) — this is
-  /// the most likely explanation for alerts silently not arriving.
+  /// Connects to [relayUrl], publishes [frame], and waits briefly for the
+  /// relay's `["OK", id, accepted, message]` (or `NOTICE`) response before
+  /// closing — without this, there would be zero visibility into whether a
+  /// relay actually accepted the event (e.g. rejected for a bad signature,
+  /// an unsupported/rate-limited kind, or some other policy reason), which
+  /// is the most likely explanation for an alert silently not arriving.
   ///
   /// Returns whether the relay explicitly responded `OK ... true`.
-  Future<bool> _publishToRelay(
-    String contactLabel,
-    String relayUrl,
-    String frame, {
-    void Function(String message)? onStep,
-  }) async {
+  Future<bool> _publishToRelay(String contactLabel, String relayUrl, String frame) async {
     WebSocket? socket;
     try {
-      debugPrint('[NostrService] "$contactLabel" -> $relayUrl: connecting');
-      onStep?.call('Nostr "$contactLabel" @ $relayUrl: conectando...');
       socket = await WebSocket.connect(relayUrl).timeout(_relayConnectTimeout);
-      debugPrint('[NostrService] "$contactLabel" -> $relayUrl: connected, sending event');
-      onStep?.call('Nostr "$contactLabel" @ $relayUrl: conectado, enviando...');
 
       final response = Completer<String?>();
       final subscription = socket.listen(
@@ -500,22 +441,14 @@ class NostrService {
       await subscription.cancel();
 
       if (raw == null) {
-        final msg = 'Nostr "$contactLabel" @ $relayUrl: sem resposta OK/NOTICE dentro do tempo limite';
-        debugPrint('[NostrService] $msg');
-        onStep?.call(msg);
+        debugPrint('[NostrService] "$contactLabel" @ $relayUrl: sem resposta OK/NOTICE dentro do tempo limite');
         return false;
       }
-
-      debugPrint('[NostrService] "$contactLabel" -> $relayUrl: response=$raw');
-      final accepted = _isOkAccepted(raw);
-      onStep?.call('Nostr "$contactLabel" @ $relayUrl: resposta="$raw"');
-      return accepted;
+      return _isOkAccepted(raw);
     } catch (e) {
       // Best-effort broadcast — a slow/unreachable relay must not block or
       // fail the others; redundancy across relays is the whole point.
-      final msg = 'Nostr "$contactLabel" @ $relayUrl: FALHA — $e';
-      debugPrint('[NostrService] $msg');
-      onStep?.call(msg);
+      debugPrint('[NostrService] "$contactLabel" @ $relayUrl: FALHA — $e');
       return false;
     } finally {
       try {

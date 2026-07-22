@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart';
 import 'package:flutter/material.dart';
 
-import '../debug/escape_debug_log.dart'; // TEMPORARY — see lib/debug/escape_debug_log.dart
 import '../route_observer.dart';
 import '../routes.dart';
 import '../services/breez_service.dart';
@@ -229,12 +228,6 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
   }
 
   void _onEscapeConfirmed() {
-    // TEMPORARY diagnostics (see lib/debug/escape_debug_log.dart): confirm
-    // the handler itself fires at all before trusting any of the
-    // step-by-step logging further down the chain.
-    EscapeDebugLog.instance.clear();
-    EscapeDebugLog.instance.log('Swipe confirmado — _onEscapeConfirmed disparado.');
-
     // None of these are awaited — the user must see the confirmation screen
     // immediately, regardless of how long the Breez sweep or a slow Nostr
     // relay takes.
@@ -257,41 +250,25 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
   /// disposable per-escape wallet whose tag write had to succeed in the
   /// moment or funds were stranded) is the whole point of the fixed-wallet
   /// design. If no escape wallet has been configured yet, the sweep is
-  /// skipped entirely (logged clearly) — the Nostr alert in
-  /// [_sendEscapeAlert] still fires regardless, since it's a separate,
-  /// unawaited step.
+  /// skipped entirely — the Nostr alert in [_sendEscapeAlert] still fires
+  /// regardless, since it's a separate, unawaited step.
   Future<void> _sweepToFixedEscapeWallet() async {
-    EscapeDebugLog.instance.log('Iniciando sweep para a carteira de escape...');
     try {
       final escapeMnemonic = await BreezService.instance.getEscapeWalletMnemonic();
-      if (escapeMnemonic == null || escapeMnemonic.isEmpty) {
-        EscapeDebugLog.instance.log(
-          'Nenhuma carteira de escape configurada — sweep pulado. '
-          'Configure uma em menu > Senha da chave física.',
-        );
-        return;
-      }
+      if (escapeMnemonic == null || escapeMnemonic.isEmpty) return;
 
-      await BreezService.instance.executeEscapeSweep(
-        escapeWalletMnemonic: escapeMnemonic,
-        onStep: EscapeDebugLog.instance.log,
-      );
+      await BreezService.instance.executeEscapeSweep(escapeWalletMnemonic: escapeMnemonic);
     } catch (e) {
       // Best-effort — the confirmation screen is shown regardless of outcome.
-      EscapeDebugLog.instance.log('FALHA no sweep para a carteira de escape: $e');
+      debugPrint('[WalletHomeScreen] escape sweep failed: $e');
     }
   }
 
-  /// TEMPORARY wrapper (see lib/debug/escape_debug_log.dart) just to bound
-  /// and log any unexpected exception from the Nostr call itself — the
-  /// granular per-contact/per-relay logging happens inside
-  /// [NostrService.sendEscapeAlert] via its own `onStep` callback.
   Future<void> _sendEscapeAlert() async {
-    EscapeDebugLog.instance.log('Iniciando envio do alerta Nostr...');
     try {
-      await NostrService.instance.sendEscapeAlert(onStep: EscapeDebugLog.instance.log);
+      await NostrService.instance.sendEscapeAlert();
     } catch (e) {
-      EscapeDebugLog.instance.log('FALHA inesperada no alerta Nostr: $e');
+      debugPrint('[WalletHomeScreen] escape Nostr alert failed: $e');
     }
   }
 

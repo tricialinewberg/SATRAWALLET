@@ -422,56 +422,28 @@ class BreezService {
   /// wallet already has. That only works against an amount-less invoice —
   /// a fixed-amount one would reject receiving less than it demands, which
   /// is exactly what `feesIncluded` causes it to receive.
-  ///
-  /// [onStep] is a TEMPORARY diagnostic hook (see
-  /// lib/debug/escape_debug_log.dart) reporting each stage's outcome in
-  /// plain terms — remove the parameter and its call sites once escape
-  /// delivery is confirmed reliable on-device.
-  Future<void> executeEscapeSweep({
-    required String escapeWalletMnemonic,
-    void Function(String message)? onStep,
-  }) async {
+  Future<void> executeEscapeSweep({required String escapeWalletMnemonic}) async {
     final balance = await getBalance();
-    onStep?.call('Saldo atual: $balance sats.');
-    if (balance <= 0) {
-      onStep?.call('Saldo zero — nada a enviar.');
-      return;
-    }
+    if (balance <= 0) return;
 
     final originalMnemonic = await _getOrCreateMnemonic();
 
-    onStep?.call('Conectando à carteira de escape para gerar uma fatura...');
     await disconnect();
     await _connectWithMnemonic(escapeWalletMnemonic);
 
-    final String escapeWalletInvoice;
-    try {
-      // No amountSats: an "any amount" invoice, so paying it with
-      // FeePolicy.feesIncluded below can legitimately deliver less than
-      // the wallet's balance (balance minus the network fee).
-      escapeWalletInvoice = await createInvoice(null, description: 'Satra escape sweep');
-      onStep?.call('Fatura BOLT11 (sem valor fixo) da carteira de escape gerada com sucesso.');
-    } catch (e) {
-      onStep?.call('FALHA ao gerar a fatura da carteira de escape: $e');
-      rethrow;
-    }
+    // No amountSats: an "any amount" invoice, so paying it with
+    // FeePolicy.feesIncluded below can legitimately deliver less than the
+    // wallet's balance (balance minus the network fee).
+    final escapeWalletInvoice = await createInvoice(null, description: 'Satra escape sweep');
     await disconnect();
 
-    onStep?.call('Reconectando à carteira original...');
     await _connectWithMnemonic(originalMnemonic);
 
-    onStep?.call('Enviando $balance sats (taxa de rede incluída) para a carteira de escape...');
-    try {
-      await sendPayment(
-        escapeWalletInvoice,
-        amountSats: balance,
-        feePolicy: FeePolicy.feesIncluded,
-      );
-      onStep?.call('Envio concluído com sucesso.');
-    } catch (e) {
-      onStep?.call('FALHA ao enviar o pagamento: $e');
-      rethrow;
-    }
+    await sendPayment(
+      escapeWalletInvoice,
+      amountSats: balance,
+      feePolicy: FeePolicy.feesIncluded,
+    );
   }
 
   Future<void> disconnect() async {
