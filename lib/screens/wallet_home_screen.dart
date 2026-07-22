@@ -21,6 +21,22 @@ String _formatThousands(int value) {
   return buffer.toString();
 }
 
+class _FiatCurrency {
+  final String code;
+  final String label;
+  final String symbol;
+  final bool commaDecimal;
+
+  const _FiatCurrency(this.code, this.label, this.symbol,
+      {required this.commaDecimal});
+}
+
+const _fiatCurrencies = [
+  _FiatCurrency('BRL', 'Real brasileiro', 'R\$', commaDecimal: true),
+  _FiatCurrency('USD', 'Dólar americano', 'US\$', commaDecimal: false),
+  _FiatCurrency('EUR', 'Euro', '€', commaDecimal: true),
+];
+
 /// Main wallet screen, backed by the real Breez SDK connection in
 /// [BreezService]: balance and its BRL estimate are live.
 class WalletHomeScreen extends StatefulWidget {
@@ -30,8 +46,13 @@ class WalletHomeScreen extends StatefulWidget {
   State<WalletHomeScreen> createState() => _WalletHomeScreenState();
 }
 
-class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, SingleTickerProviderStateMixin {
-  bool _balanceHidden = false;
+class _WalletHomeScreenState extends State<WalletHomeScreen>
+    with RouteAware, SingleTickerProviderStateMixin {
+  // Privacy-first: never flash a loading placeholder or the real balance
+  // when the wallet opens. The user explicitly reveals it with the eye
+  // button, and returning to this screen starts hidden again.
+  bool _balanceHidden = true;
+  _FiatCurrency _selectedFiatCurrency = _fiatCurrencies.first;
   late final Future<void> _connectFuture;
 
   // Drives the "payment received" banner (see [_buildPaymentBanner]) shown
@@ -61,40 +82,20 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
   void initState() {
     super.initState();
     _connectFuture = BreezService.instance.initialize();
+    _loadSelectedFiatCurrency();
     _startNfcListening();
 
-    _paymentBannerController = AnimationController(vsync: this, duration: _paymentBannerDuration);
-    _paymentBannerOpacity = TweenSequence<double>([
+    _balanceBumpController = AnimationController(vsync: this, duration: _balanceBumpDuration);
+    _balanceBumpScale = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
-        weight: _paymentBannerEntranceMs.toDouble(),
-      ),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: _paymentBannerHoldMs.toDouble()),
-      TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
-        weight: _paymentBannerExitMs.toDouble(),
-      ),
-    ]).animate(_paymentBannerController);
-    _paymentBannerScale = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: 0.88, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
-        weight: _paymentBannerEntranceMs.toDouble(),
+        tween: Tween(begin: 1.0, end: 1.16).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 45,S
       ),
       TweenSequenceItem(
-        tween: ConstantTween(1.0),
-        weight: (_paymentBannerHoldMs + _paymentBannerExitMs).toDouble(),
+        tween: Tween(begin: 1.16, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 55,
       ),
-    ]).animate(_paymentBannerController);
-    _paymentBannerSlide = TweenSequence<Offset>([
-      TweenSequenceItem(
-        tween: Tween(begin: const Offset(0, -0.3), end: Offset.zero).chain(CurveTween(curve: Curves.easeOut)),
-        weight: _paymentBannerEntranceMs.toDouble(),
-      ),
-      TweenSequenceItem(
-        tween: ConstantTween(Offset.zero),
-        weight: (_paymentBannerHoldMs + _paymentBannerExitMs).toDouble(),
-      ),
-    ]).animate(_paymentBannerController);
+    ]).animate(_balanceBumpController);
     _paymentsSubscription = BreezService.instance.paymentsStream.listen(_onPaymentsUpdate);
   }
 
@@ -105,7 +106,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
   /// already in the wallet's history.
   void _onPaymentsUpdate(List<Payment> payments) {
     final completedReceives = payments.where(
-      (p) => p.paymentType == PaymentType.receive && p.status == PaymentStatus.completed,
+      (p) =>
+          p.paymentType == PaymentType.receive &&
+          p.status == PaymentStatus.completed,
     );
 
     if (!_paymentsBaselineSet) {
@@ -124,8 +127,30 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
   void _onIncomingPayment(Payment payment) {
     if (!mounted) return;
     final amountText = _formatThousands(payment.amount.toInt());
-    setState(() => _paymentBannerText = '+$amountText sats recebidos');
-    _paymentBannerController.forward(from: 0);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: SatraColors.navy,
+        duration: const Duration(milliseconds: 1800),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle, color: Color(0xFF3FBF6F), size: 20),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                '+$amountText sats recebidos',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -173,10 +198,115 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
     );
   }
 
-  static String _formatBrl(double value) {
+  static String _formatFiat(double value, _FiatCurrency currency) {
     final fixed = value.toStringAsFixed(2);
     final parts = fixed.split('.');
-    return 'R\$ ${_formatThousands(int.parse(parts[0]))},${parts[1]}';
+    final integerDigits = parts[0];
+    final grouped = StringBuffer();
+    final thousandsSeparator = currency.commaDecimal ? '.' : ',';
+    for (var i = 0; i < integerDigits.length; i++) {
+      if (i > 0 && (integerDigits.length - i) % 3 == 0)
+        grouped.write(thousandsSeparator);
+      grouped.write(integerDigits[i]);
+    }
+    final decimalSeparator = currency.commaDecimal ? ',' : '.';
+    return '${currency.symbol} $grouped$decimalSeparator${parts[1]}';
+  }
+
+  Widget _buildHiddenBalance() {
+    return Column(
+      children: [
+        const Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '*****',
+                style: TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w900,
+                    color: SatraColors.navy),
+              ),
+              TextSpan(
+                text: '  Sats',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: SatraColors.navy),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: _chooseFiatCurrency,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '≈ ${_selectedFiatCurrency.symbol} ****',
+                  style: const TextStyle(
+                      color: SatraColors.medium, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.expand_more,
+                    size: 18, color: SatraColors.medium),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _chooseFiatCurrency() async {
+    final selected = await showModalBottomSheet<_FiatCurrency>(
+      context: context,
+      backgroundColor: SatraColors.background,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Moeda de referência',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: SatraColors.navy),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'O saldo continua em sats. Esta opção altera apenas a conversão exibida.',
+                style: TextStyle(color: SatraColors.medium, height: 1.3),
+              ),
+              const SizedBox(height: 12),
+              for (final currency in _fiatCurrencies)
+                RadioListTile<_FiatCurrency>(
+                  value: currency,
+                  groupValue: _selectedFiatCurrency,
+                  activeColor: SatraColors.medium,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('${currency.symbol}  ${currency.label}',
+                      style: const TextStyle(color: SatraColors.navy)),
+                  subtitle: Text(currency.code,
+                      style: const TextStyle(color: SatraColors.medium)),
+                  onChanged: (value) => Navigator.of(sheetContext).pop(value),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    await BreezService.instance.setSelectedFiatCurrency(selected.code);
+    if (mounted) setState(() => _selectedFiatCurrency = selected);
   }
 
   void _openEscapeInfo() {
@@ -196,7 +326,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
             const Text(
               'O que acontece no modo de escape?',
               textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.bold, color: SatraColors.navy, fontSize: 16),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: SatraColors.navy,
+                  fontSize: 16),
             ),
             const SizedBox(height: 12),
             const Text(
@@ -207,7 +340,8 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
               'senha antes (menu > Senha da chave física) — sem isso, o saldo não '
               'tem para onde ir.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: SatraColors.navy, fontSize: 14, height: 1.4),
+              style:
+                  TextStyle(color: SatraColors.navy, fontSize: 14, height: 1.4),
             ),
             const SizedBox(height: 16),
             const Row(
@@ -217,7 +351,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                 SizedBox(width: 6),
                 Text(
                   'Essa ação não pode ser desfeita.',
-                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13),
                 ),
               ],
             ),
@@ -228,6 +365,12 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
   }
 
   void _onEscapeConfirmed() {
+    // TEMPORARY diagnostics (see lib/debug/escape_debug_log.dart): confirm
+    // the handler itself fires at all before trusting any of the
+    // step-by-step logging further down the chain.
+    EscapeDebugLog.instance.clear();
+    EscapeDebugLog.instance.log('Swipe confirmado — _onEscapeConfirmed disparado.');
+
     // None of these are awaited — the user must see the confirmation screen
     // immediately, regardless of how long the Breez sweep or a slow Nostr
     // relay takes.
@@ -255,18 +398,24 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
   Future<void> _sweepToFixedEscapeWallet() async {
     try {
       final escapeMnemonic = await BreezService.instance.getEscapeWalletMnemonic();
-      if (escapeMnemonic == null || escapeMnemonic.isEmpty) return;
+      if (escapeMnemonic == null || escapeMnemonic.isEmpty) {
+        EscapeDebugLog.instance.log(
+          'Nenhuma carteira de escape configurada — sweep pulado. '
+          'Configure uma em menu > Senha da chave física.',
+        );
+        return;
+      }
 
       await BreezService.instance.executeEscapeSweep(escapeWalletMnemonic: escapeMnemonic);
     } catch (e) {
       // Best-effort — the confirmation screen is shown regardless of outcome.
-      debugPrint('[WalletHomeScreen] escape sweep failed: $e');
+      EscapeDebugLog.instance.log('FALHA no sweep para a carteira de escape: $e');
     }
   }
 
   Future<void> _sendEscapeAlert() async {
     try {
-      await NostrService.instance.sendEscapeAlert();
+      await NostrService.instance.sendEscapeAlert(onStep: EscapeDebugLog.instance.log);
     } catch (e) {
       debugPrint('[WalletHomeScreen] escape Nostr alert failed: $e');
     }
@@ -279,35 +428,40 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
       endDrawer: const SideMenuScreen(),
       body: SafeArea(
         child: Builder(
-          builder: (context) => Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Column(
+          builder: (context) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(
-                          icon: Icon(_balanceHidden ? Icons.visibility_off : Icons.visibility, color: SatraColors.medium),
-                          onPressed: () => setState(() => _balanceHidden = !_balanceHidden),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.menu, color: SatraColors.navy),
-                          onPressed: () => Scaffold.of(context).openEndDrawer(),
-                        ),
-                      ],
+                    IconButton(
+                      icon: Icon(_balanceHidden ? Icons.visibility_off : Icons.visibility, color: SatraColors.medium),
+                      onPressed: () => setState(() => _balanceHidden = !_balanceHidden),
                     ),
+                    IconButton(
+                      icon: const Icon(Icons.menu, color: SatraColors.navy),
+                      onPressed: () => Scaffold.of(context).openEndDrawer(),
+                    ),
+                  ],
+                ),
                 FutureBuilder<void>(
                   future: _connectFuture,
                   builder: (context, connectSnapshot) {
-                    if (connectSnapshot.connectionState != ConnectionState.done) {
+                    // Render the privacy state immediately, without waiting for
+                    // the wallet connection. This prevents the first frame from
+                    // showing either a loading state or stale balance values.
+                    if (_balanceHidden) return _buildHiddenBalance();
+
+                    if (connectSnapshot.connectionState !=
+                        ConnectionState.done) {
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 14),
                         child: SizedBox(
                           height: 22,
                           width: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: SatraColors.medium),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: SatraColors.medium),
                         ),
                       );
                     }
@@ -316,45 +470,70 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                         padding: EdgeInsets.symmetric(vertical: 14),
                         child: Text(
                           'Não foi possível conectar à carteira',
-                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                              color: Colors.red, fontWeight: FontWeight.w600),
                         ),
                       );
                     }
                     return StreamBuilder<int>(
                       stream: BreezService.instance.balanceStream,
+                      initialData: BreezService.instance.cachedBalanceSats,
                       builder: (context, balanceSnapshot) {
                         final sats = balanceSnapshot.data;
-                        final brlRate = BreezService.instance.cachedBrlPerBtc;
-                        final brlText = sats != null && brlRate != null
-                            ? _formatBrl(sats / 100000000 * brlRate)
+                        final fiatRate = BreezService.instance
+                            .cachedFiatRate(_selectedFiatCurrency.code);
+                        final fiatText = sats != null && fiatRate != null
+                            ? _formatFiat(sats / 100000000 * fiatRate,
+                                _selectedFiatCurrency)
                             : null;
 
                         return Column(
                           children: [
-                            Text.rich(
-                              TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: _balanceHidden
-                                        ? '*****'
-                                        : (sats != null ? _formatThousands(sats) : '···'),
-                                    style: const TextStyle(
-                                      fontSize: 30,
-                                      fontWeight: FontWeight.w900,
-                                      color: SatraColors.navy,
+                            ScaleTransition(
+                              scale: _balanceBumpScale,
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: _balanceHidden
+                                          ? '*****'
+                                          : (sats != null ? _formatThousands(sats) : '···'),
+                                      style: const TextStyle(
+                                        fontSize: 30,
+                                        fontWeight: FontWeight.w900,
+                                        color: SatraColors.navy,
+                                      ),
                                     ),
-                                  ),
-                                  const TextSpan(
-                                    text: '  Sats',
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SatraColors.navy),
-                                  ),
-                                ],
+                                    const TextSpan(
+                                      text: '  Sats',
+                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SatraColors.navy),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              _balanceHidden ? '≈ R\$ ****' : '≈ ${brlText ?? '—'}',
-                              style: const TextStyle(color: SatraColors.medium, fontWeight: FontWeight.w600),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: _chooseFiatCurrency,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '≈ ${fiatText ?? '—'}',
+                                      style: const TextStyle(
+                                          color: SatraColors.medium,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(Icons.expand_more,
+                                        size: 18, color: SatraColors.medium),
+                                  ],
+                                ),
+                              ),
                             ),
                           ],
                         );
@@ -369,13 +548,16 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                       child: SizedBox(
                         height: 52,
                         child: ElevatedButton(
-                          onPressed: () => Navigator.of(context).pushNamed(SatraRoutes.receive),
+                          onPressed: () => Navigator.of(context)
+                              .pushNamed(SatraRoutes.receive),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: SatraColors.navy,
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(26)),
                           ),
-                          child: const Text('Receber', style: TextStyle(fontWeight: FontWeight.w600)),
+                          child: const Text('Receber',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
                         ),
                       ),
                     ),
@@ -384,13 +566,16 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                       child: SizedBox(
                         height: 52,
                         child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pushNamed(SatraRoutes.send),
+                          onPressed: () =>
+                              Navigator.of(context).pushNamed(SatraRoutes.send),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: SatraColors.navy,
                             side: const BorderSide(color: SatraColors.light),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(26)),
                           ),
-                          child: const Text('Enviar', style: TextStyle(fontWeight: FontWeight.w600)),
+                          child: const Text('Enviar',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
                         ),
                       ),
                     ),
@@ -401,7 +586,11 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                   alignment: Alignment.centerLeft,
                   child: Text(
                     'TRANSAÇÕES RECENTES',
-                    style: TextStyle(color: SatraColors.medium, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5),
+                    style: TextStyle(
+                        color: SatraColors.medium,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        letterSpacing: 0.5),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -421,7 +610,8 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                             child: SizedBox(
                               height: 22,
                               width: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: SatraColors.medium),
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: SatraColors.medium),
                             ),
                           );
                         }
@@ -429,17 +619,23 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                           return const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.history, color: SatraColors.light, size: 32),
+                              Icon(Icons.history,
+                                  color: SatraColors.light, size: 32),
                               SizedBox(height: 10),
-                              Text('Nenhuma transação ainda', style: TextStyle(color: Colors.black54)),
+                              Text('Nenhuma transação ainda',
+                                  style: TextStyle(color: Colors.black54)),
                             ],
                           );
                         }
-                        return ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          itemCount: payments.length,
-                          separatorBuilder: (context, index) => const Divider(height: 1, color: SatraColors.background),
-                          itemBuilder: (context, index) => _TransactionRow(payment: payments[index]),
+                        return AppScrollbar(
+                          controller: _transactionsScrollController,
+                          child: ListView.separated(
+                            controller: _transactionsScrollController,
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            itemCount: payments.length,
+                            separatorBuilder: (context, index) => const Divider(height: 1, color: SatraColors.background),
+                            itemBuilder: (context, index) => _TransactionRow(payment: payments[index]),
+                          ),
                         );
                       },
                     ),
@@ -449,7 +645,8 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                 _EscapeSlider(onConfirmed: _onEscapeConfirmed),
                 const SizedBox(height: 8),
                 IconButton(
-                  icon: const Icon(Icons.info_outline, color: SatraColors.medium),
+                  icon:
+                      const Icon(Icons.info_outline, color: SatraColors.medium),
                   onPressed: _openEscapeInfo,
                 ),
               ],
@@ -536,7 +733,8 @@ class _EscapeSlider extends StatefulWidget {
   State<_EscapeSlider> createState() => _EscapeSliderState();
 }
 
-class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderStateMixin {
+class _EscapeSliderState extends State<_EscapeSlider>
+    with SingleTickerProviderStateMixin {
   double _dragFraction = 0;
   double _dragFractionAtRelease = 0;
   bool _completing = false;
@@ -556,7 +754,8 @@ class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderS
   @override
   void initState() {
     super.initState();
-    _successController = AnimationController(vsync: this, duration: _successDuration);
+    _successController =
+        AnimationController(vsync: this, duration: _successDuration);
   }
 
   @override
@@ -585,13 +784,17 @@ class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderS
             final t = _successController.value.clamp(0.0, 1.0);
 
             final settleT = _settleCurve.transform(t);
-            final fraction =
-                _completing ? _dragFractionAtRelease + (1.0 - _dragFractionAtRelease) * settleT : _dragFraction;
+            final fraction = _completing
+                ? _dragFractionAtRelease +
+                    (1.0 - _dragFractionAtRelease) * settleT
+                : _dragFraction;
 
             // Rises to a peak mid-pulse then eases back down — a quick
             // "thump" on the handle rather than a lasting size change.
             final pulseT = _pulseCurve.transform(t);
-            final pulse = _completing ? (1 - (pulseT - 0.5).abs() * 2).clamp(0.0, 1.0) : 0.0;
+            final pulse = _completing
+                ? (1 - (pulseT - 0.5).abs() * 2).clamp(0.0, 1.0)
+                : 0.0;
             final handleScale = 1.0 + pulse * 0.22;
 
             final showCheck = _completing && t >= _checkThreshold;
@@ -603,7 +806,8 @@ class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderS
             // which front-loads the color change (white blends visibly
             // dark within the first few percent of drag) and reads as an
             // instant jump instead of a progressive fill.
-            final fillWidth = (fraction * maxDrag + _handleSize + 8).clamp(0.0, constraints.maxWidth);
+            final fillWidth = (fraction * maxDrag + _handleSize + 8)
+                .clamp(0.0, constraints.maxWidth);
 
             return Container(
               height: _trackHeight,
@@ -619,13 +823,17 @@ class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderS
                   children: [
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: Container(width: fillWidth, height: _trackHeight, color: SatraColors.navy),
+                      child: Container(
+                          width: fillWidth,
+                          height: _trackHeight,
+                          color: SatraColors.navy),
                     ),
                     Center(
                       child: Text(
                         'deslize para o modo de escape',
                         style: TextStyle(
-                          color: Color.lerp(SatraColors.navy, Colors.white, fraction),
+                          color: Color.lerp(
+                              SatraColors.navy, Colors.white, fraction),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -637,7 +845,9 @@ class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderS
                             ? null
                             : (details) {
                                 setState(() {
-                                  _dragFraction = ((_dragFraction * maxDrag) + details.delta.dx) / maxDrag;
+                                  _dragFraction = ((_dragFraction * maxDrag) +
+                                          details.delta.dx) /
+                                      maxDrag;
                                   _dragFraction = _dragFraction.clamp(0.0, 1.0);
                                 });
                               },
@@ -657,7 +867,9 @@ class _EscapeSliderState extends State<_EscapeSlider> with SingleTickerProviderS
                             child: Container(
                               width: _handleSize,
                               height: _handleSize,
-                              decoration: const BoxDecoration(color: SatraColors.navy, shape: BoxShape.circle),
+                              decoration: const BoxDecoration(
+                                  color: SatraColors.navy,
+                                  shape: BoxShape.circle),
                               child: Icon(
                                 showCheck ? Icons.check : Icons.arrow_forward,
                                 color: Colors.white,
@@ -702,7 +914,8 @@ class _TransactionRow extends StatelessWidget {
     // Assumes Payment.timestamp is Unix seconds (matches every other
     // timestamp convention already used in this codebase, e.g. Nostr's
     // created_at) — the Breez SDK docs don't state the unit explicitly.
-    final date = DateTime.fromMillisecondsSinceEpoch(payment.timestamp.toInt() * 1000);
+    final date =
+        DateTime.fromMillisecondsSinceEpoch(payment.timestamp.toInt() * 1000);
     final dateText =
         '${_twoDigits(date.day)}/${_twoDigits(date.month)} ${_twoDigits(date.hour)}:${_twoDigits(date.minute)}';
     final statusSuffix = switch (payment.status) {
@@ -718,7 +931,8 @@ class _TransactionRow extends StatelessWidget {
           Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+            decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
             alignment: Alignment.center,
             child: Icon(icon, size: 18, color: color),
           ),
@@ -729,7 +943,8 @@ class _TransactionRow extends StatelessWidget {
               children: [
                 Text(
                   isReceive ? 'Recebido' : 'Enviado',
-                  style: const TextStyle(fontWeight: FontWeight.w600, color: SatraColors.navy),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, color: SatraColors.navy),
                 ),
                 Text(
                   '$dateText$statusSuffix',

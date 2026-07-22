@@ -62,6 +62,9 @@ dependencies:
   # QR code rendering for the receive screen.
   qr_flutter: ^4.1.0
 
+  # Camera-based QR reader for the send screen.
+  mobile_scanner: ^7.1.3
+
   # App-sandboxed storage directory for the Breez SDK's local data.
   path_provider: ^2.1.6
   cryptography: ^2.9.0
