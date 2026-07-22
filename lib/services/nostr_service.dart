@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nostr/nostr.dart';
 
+import 'breez_service.dart';
+import 'nip06.dart';
+
 /// A trusted contact who receives the NIP-17 escape alert: a display name
 /// the user picks plus the contact's npub.
 class TrustedContact {
@@ -22,24 +25,40 @@ class TrustedContact {
       );
 }
 
-/// Owns this device's disposable Nostr identity and the trusted-contacts
-/// list used for the escape alert (NIP-17).
+/// Owns this device's Nostr identity and the trusted-contacts list used
+/// for the escape alert (NIP-17).
 ///
-/// Follows the same [FlutterSecureStorage] pattern as `BreezService` for
-/// the wallet mnemonic: the private key never touches plain storage, and
-/// is generated once on first use, then reloaded on every later app open.
-/// The trusted-contacts list is stored the same way — it's small (a
-/// handful of entries) and reusing secure storage avoids pulling in a
-/// second encrypted-storage dependency for one JSON blob.
+/// The identity is derived deterministically from the wallet's BIP-39
+/// mnemonic per [NIP-06] (see [Nip06]) rather than generated randomly —
+/// restoring the wallet (by seed or physical key) always regenerates the
+/// same Nostr keys, so trusted contacts recognize the same npub across
+/// reinstalls and the encrypted contacts-list backup below stays
+/// addressable to the same identity. There is deliberately no separate
+/// stored private key anymore: it's re-derived from [BreezService]'s
+/// mnemonic on demand and cached only in memory for the session.
+///
+/// The trusted-contacts list itself is stored locally (fast, works
+/// offline) via [FlutterSecureStorage] and mirrored to the relays already
+/// used for the escape alert as a NIP-44-encrypted, self-addressed,
+/// parameterized-replaceable event (NIP-78 "application-specific data",
+/// kind 30078) — the local copy is the fast day-to-day cache, the relay
+/// copy is what [resyncAfterRestore] recovers from after a restore.
+///
+/// [NIP-06]: https://github.com/nostr-protocol/nips/blob/master/06.md
 class NostrService {
   NostrService._();
   static final NostrService instance = NostrService._();
 
-  static const _privateKeyKey = 'satra_nostr_privkey';
   static const _contactsKey = 'satra_nostr_trusted_contacts';
+
+  /// Event kind and `d` tag identifying the encrypted trusted-contacts
+  /// backup among this identity's other NIP-78 app-data events, if any.
+  static const _contactsEventKind = 30078;
+  static const _contactsDTag = 'satra-wallet:trusted-contacts';
 
   /// Well-known public relays the escape alert is broadcast to, for
   /// redundancy — if one is down or slow, the others still get the alert.
+  /// Also where the encrypted trusted-contacts backup is published/read.
   static const _relays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
@@ -54,24 +73,40 @@ class NostrService {
   /// change behavior based on the response, just log it.
   static const _relayAckTimeout = Duration(seconds: 5);
 
+  /// How long to wait for a relay to finish sending stored events (EOSE)
+  /// when fetching the trusted-contacts backup, before giving up on it.
+  static const _relayFetchTimeout = Duration(seconds: 8);
+
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   Keys? _keys;
 
+  /// Derives (or returns the cached) Nostr [Keys] for the wallet's current
+  /// mnemonic. Cached only in memory — cheap enough (a handful of BIP-32
+  /// derivation steps) to recompute after a fresh app launch, and caching
+  /// beyond the current mnemonic would risk serving a stale identity after
+  /// [resetIdentity] is called on a wallet restore.
   Future<Keys> _getOrCreateKeys() async {
     final cached = _keys;
     if (cached != null) return cached;
 
-    final existing = await _secureStorage.read(key: _privateKeyKey);
-    if (existing != null && existing.isNotEmpty) {
-      final keys = Keys(existing);
-      _keys = keys;
-      return keys;
+    final mnemonic = await BreezService.instance.getMnemonic();
+    if (mnemonic == null || mnemonic.isEmpty) {
+      throw StateError('BreezService wallet must be initialized before deriving a Nostr identity.');
     }
 
-    final keys = Keys.generate();
-    await _secureStorage.write(key: _privateKeyKey, value: keys.secret);
+    final keys = Keys(Nip06.deriveNostrPrivateKeyHex(mnemonic));
     _keys = keys;
     return keys;
+  }
+
+  /// Drops the cached identity so the next call re-derives it from
+  /// whatever mnemonic [BreezService] currently holds. Call this right
+  /// after [BreezService.restoreFromMnemonic] — otherwise a cached
+  /// identity from the previous wallet would keep being used even though
+  /// the underlying mnemonic (and therefore the correct derived identity)
+  /// has changed.
+  void resetIdentity() {
+    _keys = null;
   }
 
   /// The current device's npub. For display/debugging only — never shown
@@ -107,6 +142,11 @@ class NostrService {
 
   /// Adds (or replaces, if the npub is already present) a trusted contact.
   /// Throws [ArgumentError] if [npub] isn't a valid npub or [label] is empty.
+  ///
+  /// Saves locally first (always succeeds if validation passes), then
+  /// best-effort publishes the updated list to the relays as the
+  /// recoverable backup — a relay hiccup here must not stop the user from
+  /// adding a contact, so it's swallowed rather than rethrown.
   Future<void> addContact(String npub, String label) async {
     final trimmedNpub = npub.trim();
     final trimmedLabel = label.trim();
@@ -121,12 +161,166 @@ class NostrService {
     contacts.removeWhere((c) => c.npub == trimmedNpub);
     contacts.add(TrustedContact(label: trimmedLabel, npub: trimmedNpub));
     await _saveContacts(contacts);
+    await _publishContactsBackup(contacts);
   }
 
   Future<void> removeContact(String npub) async {
     final contacts = await getContacts();
     contacts.removeWhere((c) => c.npub == npub);
     await _saveContacts(contacts);
+    await _publishContactsBackup(contacts);
+  }
+
+  /// Best-effort: publishes [contacts] as a NIP-44-encrypted, self-addressed
+  /// NIP-78 event (kind [_contactsEventKind], `d` tag [_contactsDTag]) to
+  /// all [_relays]. Being parameterized-replaceable, each publish overwrites
+  /// the previous backup on well-behaved relays rather than accumulating
+  /// old copies. Never throws — see [addContact]/[removeContact].
+  Future<void> _publishContactsBackup(List<TrustedContact> contacts) async {
+    try {
+      final keys = await _getOrCreateKeys();
+      final plaintext = jsonEncode(contacts.map((c) => c.toMap()).toList());
+      final encrypted = await Nip44.encrypt(
+        plaintext: plaintext,
+        senderSecretKey: keys.secret,
+        recipientPubkey: keys.public,
+      );
+      final event = Event.from(
+        kind: _contactsEventKind,
+        content: encrypted,
+        secretKey: keys.secret,
+        tags: [
+          ['d', _contactsDTag],
+        ],
+      );
+      await _publishToAllRelays('contacts-backup', event);
+    } catch (e) {
+      debugPrint('[NostrService] _publishContactsBackup: FAILED — $e');
+    }
+  }
+
+  /// Fetches the most recent encrypted trusted-contacts backup (see
+  /// [_publishContactsBackup]) across all [_relays] and decrypts it.
+  /// Returns null if no relay has one, or if decryption/parsing fails.
+  Future<List<TrustedContact>?> _fetchContactsBackup() async {
+    final keys = await _getOrCreateKeys();
+    final events = await Future.wait(
+      _relays.map((relay) => _fetchLatestContactsEvent(relay, keys.public)),
+    );
+
+    Event? latest;
+    for (final event in events) {
+      if (event == null) continue;
+      if (latest == null || event.createdAt > latest.createdAt) latest = event;
+    }
+    if (latest == null) {
+      debugPrint('[NostrService] _fetchContactsBackup: no backup found on any relay');
+      return null;
+    }
+
+    try {
+      final decrypted = await Nip44.decrypt(
+        payload: latest.content,
+        recipientSecretKey: keys.secret,
+        senderPubkey: keys.public,
+      );
+      final decoded = jsonDecode(decrypted) as List<dynamic>;
+      return decoded
+          .map((e) => TrustedContact.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('[NostrService] _fetchContactsBackup: FAILED to decrypt/parse — $e');
+      return null;
+    }
+  }
+
+  /// Subscribes on [relayUrl] for this identity's latest trusted-contacts
+  /// backup event and returns it (or null on timeout/error/not found).
+  /// Verifies the event's signature — a relay could otherwise inject a
+  /// forged event under this pubkey since the REQ filter alone isn't
+  /// enforced by the protocol, only conventionally honored by relays.
+  Future<Event?> _fetchLatestContactsEvent(String relayUrl, String pubkeyHex) async {
+    WebSocket? socket;
+    StreamSubscription<dynamic>? subscription;
+    try {
+      socket = await WebSocket.connect(relayUrl).timeout(_relayConnectTimeout);
+      final request = Request(
+        subscriptionId: 'satra-contacts-${DateTime.now().microsecondsSinceEpoch}',
+        filters: [
+          Filter(
+            authors: [pubkeyHex],
+            kinds: [_contactsEventKind],
+            tagFilters: {
+              'd': [_contactsDTag],
+            },
+            limit: 1,
+          ),
+        ],
+      );
+
+      Event? found;
+      final eose = Completer<void>();
+      subscription = socket.listen(
+        (data) {
+          try {
+            final frame = jsonDecode(data.toString());
+            if (frame is! List || frame.isEmpty) return;
+            if (frame[0] == 'EVENT') {
+              final event = Event.deserialize(data.toString(), verify: true);
+              if (found == null || event.createdAt > found!.createdAt) found = event;
+            } else if (frame[0] == 'EOSE') {
+              if (!eose.isCompleted) eose.complete();
+            }
+          } catch (_) {
+            // Malformed/unverifiable frame — ignore and keep listening.
+          }
+        },
+        onError: (Object _) {
+          if (!eose.isCompleted) eose.complete();
+        },
+        onDone: () {
+          if (!eose.isCompleted) eose.complete();
+        },
+      );
+
+      socket.add(request.serialize());
+      await eose.future.timeout(_relayFetchTimeout, onTimeout: () {});
+      return found;
+    } catch (e) {
+      debugPrint('[NostrService] _fetchLatestContactsEvent @ $relayUrl: FAILED — $e');
+      return null;
+    } finally {
+      await subscription?.cancel();
+      try {
+        await socket?.close();
+      } catch (_) {
+        // Already closed/broken — nothing left to clean up.
+      }
+    }
+  }
+
+  /// Call after [BreezService.restoreFromMnemonic] succeeds (both the
+  /// seed-paste and physical-key restore paths): drops the cached identity
+  /// so it's re-derived from the now-current mnemonic, then attempts to
+  /// recover the trusted-contacts list for that identity from the relays.
+  ///
+  /// Never throws — a failed recovery just leaves the local contacts list
+  /// as-is (whatever this device already had, likely empty on a fresh
+  /// install) rather than blocking or failing the restore itself, which
+  /// has already succeeded by the time this runs. If a backup IS found, it
+  /// replaces the local list outright — this is the recovery path, and the
+  /// relay copy is the source of truth for it.
+  Future<void> resyncAfterRestore() async {
+    resetIdentity();
+    try {
+      final recovered = await _fetchContactsBackup();
+      if (recovered != null) {
+        await _saveContacts(recovered);
+        debugPrint('[NostrService] resyncAfterRestore: recovered ${recovered.length} contact(s) from relays');
+      }
+    } catch (e) {
+      debugPrint('[NostrService] resyncAfterRestore: FAILED — $e');
+    }
   }
 
   /// Sends a NIP-17 encrypted, NIP-59 gift-wrapped DM to every trusted

@@ -51,6 +51,14 @@ dependencies:
   # Maintained fork of the (now unmaintained) `bip39` package.
   bip39_plus: ^1.1.1
 
+  # HMAC-SHA512 (crypto) and secp256k1 point math (elliptic) for the
+  # from-scratch NIP-06 (BIP-32) Nostr key derivation in lib/services/nip06.dart.
+  # Both were already present transitively (via bip39_plus and nostr,
+  # respectively) — declared directly here since nip06.dart depends on
+  # their APIs and shouldn't rely on another package's transitive pin.
+  crypto: ^3.0.6
+  elliptic: ^0.3.12
+
   # QR code rendering for the receive screen.
   qr_flutter: ^4.1.0
 

@@ -4,6 +4,7 @@ import '../routes.dart';
 import '../services/breez_service.dart';
 import '../services/nfc_credential_crypto.dart';
 import '../services/nfc_service.dart';
+import '../services/nostr_service.dart';
 import '../theme/colors.dart';
 import '../widgets/nfc_password_prompt.dart';
 
@@ -68,6 +69,11 @@ class _NfcTransferScreenState extends State<NfcTransferScreen> {
       // below — never logged, stored, or shown anywhere.
       final mnemonic = await NfcCredentialCrypto.decrypt(envelopeJson: envelope, password: password);
       await BreezService.instance.restoreFromMnemonic(mnemonic);
+      // Re-derives the Nostr identity for the (possibly new) mnemonic and
+      // best-effort recovers the trusted-contacts list from relays. Never
+      // throws, so it can't turn an already-successful wallet restore into
+      // a reported failure.
+      await NostrService.instance.resyncAfterRestore();
       if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil(
         SatraRoutes.walletHome,

@@ -131,7 +131,7 @@ packages:
     source: hosted
     version: "3.1.2"
   crypto:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: crypto
       sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
@@ -155,7 +155,7 @@ packages:
     source: hosted
     version: "1.0.9"
   elliptic:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: elliptic
       sha256: "67931d408faa353bdebac9f7a1df0c3f6f828f4e8439cdf084573cd1601a2f4b"

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../routes.dart';
 import '../services/breez_service.dart';
+import '../services/nostr_service.dart';
 import '../theme/colors.dart';
 import '../widgets/app_scrollbar.dart';
 
@@ -87,6 +88,11 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
     setState(() => _restoring = true);
     try {
       await BreezService.instance.restoreFromMnemonic(pasted);
+      // Re-derives the Nostr identity for the (possibly new) mnemonic and
+      // best-effort recovers the trusted-contacts list from relays. Never
+      // throws, so it can't turn an already-successful wallet restore into
+      // a reported failure.
+      await NostrService.instance.resyncAfterRestore();
       if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil(
         SatraRoutes.walletHome,
