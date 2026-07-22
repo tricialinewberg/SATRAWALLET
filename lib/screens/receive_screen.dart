@@ -4,6 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/breez_service.dart';
 import '../theme/colors.dart';
+import '../widgets/app_scrollbar.dart';
 
 /// Receive screen backed by the real Breez SDK: shows the wallet's actual
 /// Lightning Address as a QR by default, and swaps to a real fixed-amount
@@ -20,6 +21,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   String? _fixedInvoice;
   int? _fixedInvoiceAmount;
   bool _generatingInvoice = false;
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -27,6 +29,12 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     _addressFuture = BreezService.instance.initialize().then(
           (_) => BreezService.instance.getLightningAddress(),
         );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _copyToClipboard(String value) async {
@@ -121,8 +129,11 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: SingleChildScrollView(
-                  child: FutureBuilder<String>(
+                child: AppScrollbar(
+                  controller: _scrollController,
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    child: FutureBuilder<String>(
                     future: _addressFuture,
                     builder: (context, snapshot) {
                       if (snapshot.connectionState != ConnectionState.done) {
@@ -254,6 +265,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                         ],
                       );
                     },
+                  ),
                   ),
                 ),
               ),

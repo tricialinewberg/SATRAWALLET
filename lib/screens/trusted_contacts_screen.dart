@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/nostr_service.dart';
 import '../theme/colors.dart';
+import '../widgets/app_scrollbar.dart';
 
 /// "Rede de confiança": add/remove the npubs that receive the NIP-17
 /// escape alert. Deliberately simple, matching [WalletBackupScreen]'s style.
@@ -17,6 +18,7 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
   bool _adding = false;
   final _labelController = TextEditingController();
   final _npubController = TextEditingController();
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -28,6 +30,7 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
   void dispose() {
     _labelController.dispose();
     _npubController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -86,9 +89,12 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
     return Scaffold(
       backgroundColor: SatraColors.background,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          children: [
+        child: AppScrollbar(
+          controller: _scrollController,
+          child: ListView(
+            controller: _scrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            children: [
             Row(
               children: [
                 IconButton(
@@ -262,6 +268,7 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
             ),
             const SizedBox(height: 24),
           ],
+          ),
         ),
       ),
     );

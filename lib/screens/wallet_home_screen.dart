@@ -10,6 +10,7 @@ import '../services/breez_service.dart';
 import '../services/nfc_service.dart';
 import '../services/nostr_service.dart';
 import '../theme/colors.dart';
+import '../widgets/app_scrollbar.dart';
 import 'side_menu_screen.dart';
 
 String _formatThousands(int value) {
@@ -44,6 +45,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
   StreamSubscription<List<Payment>>? _paymentsSubscription;
   final Set<String> _seenCompletedReceiveIds = {};
   bool _paymentsBaselineSet = false;
+  final _transactionsScrollController = ScrollController();
 
   static const _balanceBumpDuration = Duration(milliseconds: 420);
 
@@ -136,6 +138,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
     NfcService.instance.stopListening();
     _paymentsSubscription?.cancel();
     _balanceBumpController.dispose();
+    _transactionsScrollController.dispose();
     super.dispose();
   }
 
@@ -451,11 +454,15 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, Si
                             ],
                           );
                         }
-                        return ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          itemCount: payments.length,
-                          separatorBuilder: (context, index) => const Divider(height: 1, color: SatraColors.background),
-                          itemBuilder: (context, index) => _TransactionRow(payment: payments[index]),
+                        return AppScrollbar(
+                          controller: _transactionsScrollController,
+                          child: ListView.separated(
+                            controller: _transactionsScrollController,
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            itemCount: payments.length,
+                            separatorBuilder: (context, index) => const Divider(height: 1, color: SatraColors.background),
+                            itemBuilder: (context, index) => _TransactionRow(payment: payments[index]),
+                          ),
                         );
                       },
                     ),

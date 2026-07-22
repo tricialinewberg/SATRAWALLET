@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../services/breez_service.dart';
 import '../theme/colors.dart';
+import '../widgets/app_scrollbar.dart';
 
 /// Send flow: paste a Lightning invoice, Lightning address, on-chain
 /// Bitcoin address, or Spark address/invoice, confirm.
@@ -26,6 +27,7 @@ class SendScreen extends StatefulWidget {
 class _SendScreenState extends State<SendScreen> {
   final _destinationController = TextEditingController();
   final _amountController = TextEditingController();
+  final _scrollController = ScrollController();
   bool _sending = false;
 
   Timer? _parseDebounce;
@@ -45,6 +47,7 @@ class _SendScreenState extends State<SendScreen> {
     _destinationController.removeListener(_onDestinationChanged);
     _destinationController.dispose();
     _amountController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -219,9 +222,12 @@ class _SendScreenState extends State<SendScreen> {
     return Scaffold(
       backgroundColor: SatraColors.background,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          children: [
+        child: AppScrollbar(
+          controller: _scrollController,
+          child: ListView(
+            controller: _scrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            children: [
             Row(
               children: [
                 IconButton(
@@ -377,6 +383,7 @@ class _SendScreenState extends State<SendScreen> {
             ),
             const SizedBox(height: 24),
           ],
+          ),
         ),
       ),
     );
