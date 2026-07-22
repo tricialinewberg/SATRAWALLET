@@ -261,7 +261,7 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Cole uma frase de 12 palavras de outra carteira Satra para substituir a carteira atual neste celular.',
+              'Cole uma frase de 12 palavras de outra carteira para substituir a carteira atual neste celular.',
               style: TextStyle(color: SatraColors.navy, fontSize: 13, height: 1.3),
             ),
             const SizedBox(height: 12),

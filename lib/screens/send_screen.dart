@@ -260,7 +260,7 @@ class _SendScreenState extends State<SendScreen> {
                       maxLines: 5,
                       style: const TextStyle(color: SatraColors.navy),
                       decoration: const InputDecoration(
-                        hintText: 'Fatura Lightning, endereço Lightning, Bitcoin ou Spark',
+                        hintText: 'Fatura Lightning, endereço Lightning ou Spark',
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.all(16),
                       ),
