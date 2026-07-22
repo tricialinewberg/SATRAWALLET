@@ -31,15 +31,94 @@ class WalletHomeScreen extends StatefulWidget {
   State<WalletHomeScreen> createState() => _WalletHomeScreenState();
 }
 
-class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
+class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware, SingleTickerProviderStateMixin {
   bool _balanceHidden = false;
   late final Future<void> _connectFuture;
+
+  // Drives the quick "balance just bumped" scale animation, plus the toast
+  // below, whenever a new *completed* incoming payment is seen — not on
+  // every balanceStream/paymentsStream emission, which also fires on plain
+  // re-syncs and on outgoing payments (e.g. the escape sweep).
+  late final AnimationController _balanceBumpController;
+  late final Animation<double> _balanceBumpScale;
+  StreamSubscription<List<Payment>>? _paymentsSubscription;
+  final Set<String> _seenCompletedReceiveIds = {};
+  bool _paymentsBaselineSet = false;
+
+  static const _balanceBumpDuration = Duration(milliseconds: 420);
 
   @override
   void initState() {
     super.initState();
     _connectFuture = BreezService.instance.initialize();
     _startNfcListening();
+
+    _balanceBumpController = AnimationController(vsync: this, duration: _balanceBumpDuration);
+    _balanceBumpScale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 1.16).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 45,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.16, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 55,
+      ),
+    ]).animate(_balanceBumpController);
+    _paymentsSubscription = BreezService.instance.paymentsStream.listen(_onPaymentsUpdate);
+  }
+
+  /// Detects newly-completed incoming payments by diffing against what's
+  /// already been seen, so the celebration only plays once per payment (and
+  /// never for the historical list a reconnect re-emits). The first
+  /// snapshot just seeds the baseline instead of celebrating every payment
+  /// already in the wallet's history.
+  void _onPaymentsUpdate(List<Payment> payments) {
+    final completedReceives = payments.where(
+      (p) => p.paymentType == PaymentType.receive && p.status == PaymentStatus.completed,
+    );
+
+    if (!_paymentsBaselineSet) {
+      _seenCompletedReceiveIds.addAll(completedReceives.map((p) => p.id));
+      _paymentsBaselineSet = true;
+      return;
+    }
+
+    for (final payment in completedReceives) {
+      if (_seenCompletedReceiveIds.add(payment.id)) {
+        _onIncomingPayment(payment);
+      }
+    }
+  }
+
+  void _onIncomingPayment(Payment payment) {
+    if (!mounted) return;
+    _balanceBumpController.forward(from: 0);
+
+    final amountText = _formatThousands(payment.amount.toInt());
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: SatraColors.navy,
+        duration: const Duration(milliseconds: 1800),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle, color: Color(0xFF3FBF6F), size: 20),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                '+$amountText sats recebidos',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -55,6 +134,8 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
   void dispose() {
     satraRouteObserver.unsubscribe(this);
     NfcService.instance.stopListening();
+    _paymentsSubscription?.cancel();
+    _balanceBumpController.dispose();
     super.dispose();
   }
 
@@ -263,24 +344,27 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> with RouteAware {
 
                         return Column(
                           children: [
-                            Text.rich(
-                              TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: _balanceHidden
-                                        ? '*****'
-                                        : (sats != null ? _formatThousands(sats) : '···'),
-                                    style: const TextStyle(
-                                      fontSize: 30,
-                                      fontWeight: FontWeight.w900,
-                                      color: SatraColors.navy,
+                            ScaleTransition(
+                              scale: _balanceBumpScale,
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: _balanceHidden
+                                          ? '*****'
+                                          : (sats != null ? _formatThousands(sats) : '···'),
+                                      style: const TextStyle(
+                                        fontSize: 30,
+                                        fontWeight: FontWeight.w900,
+                                        color: SatraColors.navy,
+                                      ),
                                     ),
-                                  ),
-                                  const TextSpan(
-                                    text: '  Sats',
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SatraColors.navy),
-                                  ),
-                                ],
+                                    const TextSpan(
+                                      text: '  Sats',
+                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SatraColors.navy),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                             const SizedBox(height: 4),
