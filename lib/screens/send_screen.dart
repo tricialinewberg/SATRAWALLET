@@ -71,14 +71,16 @@ class _SendScreenState extends State<SendScreen> {
     final text = _destinationController.text.trim();
     if (text.isEmpty) return;
 
-    _parseDebounce = Timer(const Duration(milliseconds: 180), () => _parseDestination(text));
+    _parseDebounce =
+        Timer(const Duration(milliseconds: 180), () => _parseDestination(text));
   }
 
   void _onAmountChanged() => setState(() {});
 
   Future<void> _loadWalletDisplay() async {
     final code = await BreezService.instance.getSelectedFiatCurrency();
-    final balance = BreezService.instance.cachedBalanceSats ?? await BreezService.instance.getBalance();
+    final balance = BreezService.instance.cachedBalanceSats ??
+        await BreezService.instance.getBalance();
     if (!mounted) return;
     setState(() {
       _fiatCode = _fiatCurrencies.containsKey(code) ? code : 'BRL';
@@ -89,7 +91,9 @@ class _SendScreenState extends State<SendScreen> {
   Future<void> _parseDestination(String text) async {
     setState(() => _parsing = true);
     try {
-      final parsed = await BreezService.instance.parseInput(text).timeout(const Duration(seconds: 8));
+      final parsed = await BreezService.instance
+          .parseInput(text)
+          .timeout(const Duration(seconds: 8));
       if (!mounted || _destinationController.text.trim() != text) return;
       setState(() {
         _parsedInput = parsed;
@@ -99,7 +103,8 @@ class _SendScreenState extends State<SendScreen> {
       if (!mounted || _destinationController.text.trim() != text) return;
       setState(() {
         _parsedInput = null;
-        _parseError = 'Não reconhecemos esse destino. Confira se copiou certinho.';
+        _parseError =
+            'Não reconhecemos esse destino. Confira se copiou certinho.';
       });
     } finally {
       if (mounted) setState(() => _parsing = false);
@@ -108,8 +113,9 @@ class _SendScreenState extends State<SendScreen> {
 
   /// The amount (in sats) the destination already specifies, if any.
   static int? _fixedAmountSatsFor(InputType parsed) => switch (parsed) {
-        InputType_Bolt11Invoice(:final field0) =>
-          field0.amountMsat != null ? (field0.amountMsat! ~/ BigInt.from(1000)).toInt() : null,
+        InputType_Bolt11Invoice(:final field0) => field0.amountMsat != null
+            ? (field0.amountMsat! ~/ BigInt.from(1000)).toInt()
+            : null,
         InputType_Bip21(:final field0) => field0.amountSat?.toInt(),
         InputType_SparkInvoice(:final field0) => field0.amount?.toInt(),
         _ => null,
@@ -131,7 +137,10 @@ class _SendScreenState extends State<SendScreen> {
   static (int, int)? _sendableRangeFor(InputType parsed) {
     final payRequest = BreezService.lnurlPayRequestDetailsFor(parsed);
     if (payRequest == null) return null;
-    return ((payRequest.minSendable ~/ BigInt.from(1000)).toInt(), (payRequest.maxSendable ~/ BigInt.from(1000)).toInt());
+    return (
+      (payRequest.minSendable ~/ BigInt.from(1000)).toInt(),
+      (payRequest.maxSendable ~/ BigInt.from(1000)).toInt()
+    );
   }
 
   Future<void> _pasteFromClipboard() async {
@@ -139,7 +148,8 @@ class _SendScreenState extends State<SendScreen> {
     final text = data?.text?.trim();
     if (text == null || text.isEmpty) return;
     _destinationController.text = text;
-    _destinationController.selection = TextSelection.collapsed(offset: text.length);
+    _destinationController.selection =
+        TextSelection.collapsed(offset: text.length);
   }
 
   Future<void> _scanQrCode() async {
@@ -149,14 +159,17 @@ class _SendScreenState extends State<SendScreen> {
     if (!mounted || scannedValue == null || scannedValue.isEmpty) return;
     final value = _normalizePaymentQr(scannedValue);
     _destinationController.text = value;
-    _destinationController.selection = TextSelection.collapsed(offset: value.length);
+    _destinationController.selection =
+        TextSelection.collapsed(offset: value.length);
     _parseDebounce?.cancel();
     await _parseDestination(value);
   }
 
   static String _normalizePaymentQr(String rawValue) {
     var value = rawValue.trim();
-    value = value.replaceFirst(RegExp(r'^lightning:(//)?', caseSensitive: false), '').trim();
+    value = value
+        .replaceFirst(RegExp(r'^lightning:(//)?', caseSensitive: false), '')
+        .trim();
     try {
       return Uri.decodeComponent(value);
     } on FormatException {
@@ -174,8 +187,11 @@ class _SendScreenState extends State<SendScreen> {
       final rate = BreezService.instance.cachedFiatRate(selected);
       if (rate != null) {
         final value = satsBeforeCurrencyChange / 100000000 * rate;
-        _amountController.text = value.toStringAsFixed(2).replaceFirst('.', selected == 'USD' ? '.' : ',');
-        _amountController.selection = TextSelection.collapsed(offset: _amountController.text.length);
+        _amountController.text = value
+            .toStringAsFixed(2)
+            .replaceFirst('.', selected == 'USD' ? '.' : ',');
+        _amountController.selection =
+            TextSelection.collapsed(offset: _amountController.text.length);
       }
     }
   }
@@ -215,12 +231,16 @@ class _SendScreenState extends State<SendScreen> {
       _amountController.text = sats.toString();
     } else if (rate != null) {
       final value = sats / 100000000 * rate;
-      _amountController.text = value.toStringAsFixed(2).replaceFirst('.', _fiatCode == 'USD' ? '.' : ',');
+      _amountController.text = value
+          .toStringAsFixed(2)
+          .replaceFirst('.', _fiatCode == 'USD' ? '.' : ',');
     }
-    _amountController.selection = TextSelection.collapsed(offset: _amountController.text.length);
+    _amountController.selection =
+        TextSelection.collapsed(offset: _amountController.text.length);
   }
 
-  Future<void> _showResultDialog({required bool success, required String title, required String message}) {
+  Future<void> _showResultDialog(
+      {required bool success, required String title, required String message}) {
     return showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -228,7 +248,8 @@ class _SendScreenState extends State<SendScreen> {
           children: [
             Icon(
               success ? Icons.check_circle : Icons.error_outline,
-              color: success ? const Color(0xFF3FBF6F) : const Color(0xFFD64545),
+              color:
+                  success ? const Color(0xFF3FBF6F) : const Color(0xFFD64545),
             ),
             const SizedBox(width: 10),
             Expanded(child: Text(title)),
@@ -268,7 +289,8 @@ class _SendScreenState extends State<SendScreen> {
         await _showResultDialog(
           success: false,
           title: 'Valor necessário',
-          message: 'Este destino não tem um valor fixo — informe quantos sats deseja enviar.',
+          message:
+              'Este destino não tem um valor fixo — informe quantos sats deseja enviar.',
         );
         return;
       }
@@ -286,7 +308,8 @@ class _SendScreenState extends State<SendScreen> {
       await _showResultDialog(
         success: true,
         title: 'Pagamento enviado',
-        message: '${_formatThousands(payment.amount.toInt())} sats enviados com sucesso.',
+        message:
+            '${_formatThousands(payment.amount.toInt())} sats enviados com sucesso.',
       );
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -334,7 +357,10 @@ class _SendScreenState extends State<SendScreen> {
                   child: Text(
                     'Enviar',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: SatraColors.navy),
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: SatraColors.navy),
                   ),
                 ),
                 const SizedBox(width: 48),
@@ -351,7 +377,8 @@ class _SendScreenState extends State<SendScreen> {
                     foregroundColor: SatraColors.navy,
                     backgroundColor: Colors.white,
                     side: const BorderSide(color: SatraColors.light),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
                   ),
                 ),
                 const Spacer(),
@@ -360,7 +387,11 @@ class _SendScreenState extends State<SendScreen> {
             const SizedBox(height: 14),
             const Text(
               'FATURA OU ENDEREÇO',
-              style: TextStyle(color: SatraColors.medium, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5),
+              style: TextStyle(
+                  color: SatraColors.medium,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  letterSpacing: 0.5),
             ),
             const SizedBox(height: 8),
             Container(
@@ -379,14 +410,16 @@ class _SendScreenState extends State<SendScreen> {
                       maxLines: 5,
                       style: const TextStyle(color: SatraColors.navy),
                       decoration: const InputDecoration(
-                        hintText: 'Fatura Lightning, endereço Lightning ou Spark',
+                        hintText:
+                            'Fatura Lightning, endereço Lightning ou Spark',
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.all(16),
                       ),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.content_paste, color: SatraColors.medium, size: 20),
+                    icon: const Icon(Icons.content_paste,
+                        color: SatraColors.medium, size: 20),
                     tooltip: 'Colar',
                     onPressed: _pasteFromClipboard,
                   ),
@@ -400,29 +433,40 @@ class _SendScreenState extends State<SendScreen> {
                   SizedBox(
                     width: 14,
                     height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: SatraColors.medium),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: SatraColors.medium),
                   ),
                   SizedBox(width: 8),
-                  Text('Identificando destino...', style: TextStyle(color: SatraColors.medium, fontSize: 13)),
+                  Text('Identificando destino...',
+                      style:
+                          TextStyle(color: SatraColors.medium, fontSize: 13)),
                 ],
               )
             else if (_parseError != null)
               Row(
                 children: [
-                  const Icon(Icons.error_outline, color: Color(0xFFD64545), size: 16),
+                  const Icon(Icons.error_outline,
+                      color: Color(0xFFD64545), size: 16),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(_parseError!, style: const TextStyle(color: Color(0xFFD64545), fontSize: 13)),
+                    child: Text(_parseError!,
+                        style: const TextStyle(
+                            color: Color(0xFFD64545), fontSize: 13)),
                   ),
                 ],
               )
             else if (parsed != null)
               Row(
                 children: [
-                  const Icon(Icons.check_circle_outline, color: SatraColors.medium, size: 16),
+                  const Icon(Icons.check_circle_outline,
+                      color: SatraColors.medium, size: 16),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(_labelFor(parsed), style: const TextStyle(color: SatraColors.medium, fontSize: 13, fontWeight: FontWeight.w600)),
+                    child: Text(_labelFor(parsed),
+                        style: const TextStyle(
+                            color: SatraColors.medium,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
                   ),
                 ],
               ),
@@ -432,11 +476,20 @@ class _SendScreenState extends State<SendScreen> {
               children: [
                 const Text(
                   'VALOR DO ENVIO',
-                  style: TextStyle(color: SatraColors.medium, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5),
+                  style: TextStyle(
+                      color: SatraColors.medium,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      letterSpacing: 0.5),
                 ),
                 Text(
-                  _balanceSats == null ? 'Saldo: —' : 'Saldo: ${_formatThousands(_balanceSats!)} sats',
-                  style: const TextStyle(color: SatraColors.medium, fontSize: 12, fontWeight: FontWeight.w600),
+                  _balanceSats == null
+                      ? 'Saldo: —'
+                      : 'Saldo: ${_formatThousands(_balanceSats!)} sats',
+                  style: const TextStyle(
+                      color: SatraColors.medium,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -448,15 +501,22 @@ class _SendScreenState extends State<SendScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: ChoiceChip(
-                        label: SizedBox(width: double.infinity, child: Text(code, textAlign: TextAlign.center)),
+                        label: SizedBox(
+                            width: double.infinity,
+                            child: Text(code, textAlign: TextAlign.center)),
                         selected: _fiatCode == code,
                         onSelected: (_) => _selectFiatCurrency(code),
                         showCheckmark: false,
                         selectedColor: SatraColors.navy,
                         backgroundColor: Colors.white,
-                        side: BorderSide(color: _fiatCode == code ? SatraColors.navy : SatraColors.light),
+                        side: BorderSide(
+                            color: _fiatCode == code
+                                ? SatraColors.navy
+                                : SatraColors.light),
                         labelStyle: TextStyle(
-                          color: _fiatCode == code ? Colors.white : SatraColors.medium,
+                          color: _fiatCode == code
+                              ? Colors.white
+                              : SatraColors.medium,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -468,7 +528,8 @@ class _SendScreenState extends State<SendScreen> {
             if (fixedAmount != null)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   color: SatraColors.light.withValues(alpha: 0.25),
                   borderRadius: BorderRadius.circular(16),
@@ -479,15 +540,21 @@ class _SendScreenState extends State<SendScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.lock_outline, size: 16, color: SatraColors.navy),
+                        const Icon(Icons.lock_outline,
+                            size: 16, color: SatraColors.navy),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             '${_formatThousands(fixedAmount)} sats',
-                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: SatraColors.navy),
+                            style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: SatraColors.navy),
                           ),
                         ),
-                        const Text('Valor da fatura', style: TextStyle(color: SatraColors.medium, fontSize: 12)),
+                        const Text('Valor da fatura',
+                            style: TextStyle(
+                                color: SatraColors.medium, fontSize: 12)),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -495,9 +562,15 @@ class _SendScreenState extends State<SendScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 5),
                       child: Row(
                         children: [
-                          Text('≈ ${_fiatTextFor(fixedAmount)}', style: const TextStyle(color: SatraColors.medium, fontWeight: FontWeight.w600)),
+                          Text('≈ ${_fiatTextFor(fixedAmount)}',
+                              style: const TextStyle(
+                                  color: SatraColors.medium,
+                                  fontWeight: FontWeight.w600)),
                           const Spacer(),
-                          Text(_fiatCode, style: const TextStyle(color: SatraColors.navy, fontWeight: FontWeight.bold)),
+                          Text(_fiatCode,
+                              style: const TextStyle(
+                                  color: SatraColors.navy,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
@@ -520,8 +593,12 @@ class _SendScreenState extends State<SendScreen> {
                         Expanded(
                           child: TextField(
                             controller: _amountController,
-                            keyboardType: TextInputType.numberWithOptions(decimal: !_inputInSats),
-                            style: const TextStyle(color: SatraColors.navy, fontSize: 30, fontWeight: FontWeight.w800),
+                            keyboardType: TextInputType.numberWithOptions(
+                                decimal: !_inputInSats),
+                            style: const TextStyle(
+                                color: SatraColors.navy,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w800),
                             decoration: const InputDecoration(
                               hintText: '0',
                               border: InputBorder.none,
@@ -529,8 +606,13 @@ class _SendScreenState extends State<SendScreen> {
                           ),
                         ),
                         Text(
-                          _inputInSats ? 'sats' : _fiatCurrencies[_fiatCode]!.$2,
-                          style: const TextStyle(color: SatraColors.navy, fontSize: 18, fontWeight: FontWeight.bold),
+                          _inputInSats
+                              ? 'sats'
+                              : _fiatCurrencies[_fiatCode]!.$2,
+                          style: const TextStyle(
+                              color: SatraColors.navy,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -541,12 +623,16 @@ class _SendScreenState extends State<SendScreen> {
                         children: [
                           Text(
                             '≈ ${_secondaryAmountText()}',
-                            style: const TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                                color: SatraColors.navy,
+                                fontWeight: FontWeight.w700),
                           ),
                           const Spacer(),
                           IconButton.filled(
                             onPressed: _switchAmountUnit,
-                            tooltip: _inputInSats ? 'Digitar em $_fiatCode' : 'Digitar em sats',
+                            tooltip: _inputInSats
+                                ? 'Digitar em $_fiatCode'
+                                : 'Digitar em sats',
                             style: IconButton.styleFrom(
                               backgroundColor: SatraColors.navy,
                               foregroundColor: Colors.white,
@@ -563,7 +649,8 @@ class _SendScreenState extends State<SendScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'Entre ${_formatThousands(sendableRange.$1)} e ${_formatThousands(sendableRange.$2)} sats',
-                  style: const TextStyle(color: SatraColors.medium, fontSize: 12),
+                  style:
+                      const TextStyle(color: SatraColors.medium, fontSize: 12),
                 ),
               ],
             ],
@@ -575,15 +662,19 @@ class _SendScreenState extends State<SendScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: SatraColors.navy,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28)),
                 ),
                 child: _sending
                     ? const SizedBox(
                         width: 22,
                         height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
                       )
-                    : const Text('Confirmar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    : const Text('Confirmar',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600)),
               ),
             ),
             const SizedBox(height: 24),

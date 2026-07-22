@@ -75,7 +75,8 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
   static const _paymentBannerHoldMs = 2200;
   static const _paymentBannerExitMs = 450;
   static const _paymentBannerDuration = Duration(
-    milliseconds: _paymentBannerEntranceMs + _paymentBannerHoldMs + _paymentBannerExitMs,
+    milliseconds:
+        _paymentBannerEntranceMs + _paymentBannerHoldMs + _paymentBannerExitMs,
   );
 
   @override
@@ -85,18 +86,61 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
     _loadSelectedFiatCurrency();
     _startNfcListening();
 
-    _balanceBumpController = AnimationController(vsync: this, duration: _balanceBumpDuration);
-    _balanceBumpScale = TweenSequence<double>([
+    _paymentBannerController = AnimationController(
+      vsync: this,
+      duration: _paymentBannerDuration,
+    );
+    _paymentBannerOpacity = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.16).chain(CurveTween(curve: Curves.easeOut)),
-        weight: 45,S
+        tween: Tween(begin: 0.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: _paymentBannerEntranceMs.toDouble(),
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.16, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
-        weight: 55,
+        tween: ConstantTween(1.0),
+        weight: _paymentBannerHoldMs.toDouble(),
       ),
-    ]).animate(_balanceBumpController);
-    _paymentsSubscription = BreezService.instance.paymentsStream.listen(_onPaymentsUpdate);
+      TweenSequenceItem(
+        tween:
+            Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        weight: _paymentBannerExitMs.toDouble(),
+      ),
+    ]).animate(_paymentBannerController);
+    _paymentBannerScale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.88, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: _paymentBannerEntranceMs.toDouble(),
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween(1.0),
+        weight: (_paymentBannerHoldMs + _paymentBannerExitMs).toDouble(),
+      ),
+    ]).animate(_paymentBannerController);
+    _paymentBannerSlide = TweenSequence<Offset>([
+      TweenSequenceItem(
+        tween: Tween(begin: const Offset(0, -0.3), end: Offset.zero)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: _paymentBannerEntranceMs.toDouble(),
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween(Offset.zero),
+        weight: (_paymentBannerHoldMs + _paymentBannerExitMs).toDouble(),
+      ),
+    ]).animate(_paymentBannerController);
+    _paymentsSubscription =
+        BreezService.instance.paymentsStream.listen(_onPaymentsUpdate);
+  }
+
+  Future<void> _loadSelectedFiatCurrency() async {
+    final savedCode = await BreezService.instance.getSelectedFiatCurrency();
+    if (!mounted) return;
+    setState(() {
+      _selectedFiatCurrency = _fiatCurrencies.firstWhere(
+        (currency) => currency.code == savedCode,
+        orElse: () => _fiatCurrencies.first,
+      );
+    });
   }
 
   /// Detects newly-completed incoming payments by diffing against what's
@@ -127,30 +171,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
   void _onIncomingPayment(Payment payment) {
     if (!mounted) return;
     final amountText = _formatThousands(payment.amount.toInt());
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: SatraColors.navy,
-        duration: const Duration(milliseconds: 1800),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle, color: Color(0xFF3FBF6F), size: 20),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                '+$amountText sats recebidos',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    setState(() => _paymentBannerText =
+        _balanceHidden ? 'Pagamento recebido' : '+$amountText sats recebidos');
+    _paymentBannerController.forward(from: 0);
   }
 
   @override
@@ -365,12 +388,6 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
   }
 
   void _onEscapeConfirmed() {
-    // TEMPORARY diagnostics (see lib/debug/escape_debug_log.dart): confirm
-    // the handler itself fires at all before trusting any of the
-    // step-by-step logging further down the chain.
-    EscapeDebugLog.instance.clear();
-    EscapeDebugLog.instance.log('Swipe confirmado — _onEscapeConfirmed disparado.');
-
     // None of these are awaited — the user must see the confirmation screen
     // immediately, regardless of how long the Breez sweep or a slow Nostr
     // relay takes.
@@ -397,25 +414,24 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
   /// regardless, since it's a separate, unawaited step.
   Future<void> _sweepToFixedEscapeWallet() async {
     try {
-      final escapeMnemonic = await BreezService.instance.getEscapeWalletMnemonic();
+      final escapeMnemonic =
+          await BreezService.instance.getEscapeWalletMnemonic();
       if (escapeMnemonic == null || escapeMnemonic.isEmpty) {
-        EscapeDebugLog.instance.log(
-          'Nenhuma carteira de escape configurada — sweep pulado. '
-          'Configure uma em menu > Senha da chave física.',
-        );
+        debugPrint('[WalletHomeScreen] nenhuma carteira de escape configurada');
         return;
       }
 
-      await BreezService.instance.executeEscapeSweep(escapeWalletMnemonic: escapeMnemonic);
+      await BreezService.instance
+          .executeEscapeSweep(escapeWalletMnemonic: escapeMnemonic);
     } catch (e) {
       // Best-effort — the confirmation screen is shown regardless of outcome.
-      EscapeDebugLog.instance.log('FALHA no sweep para a carteira de escape: $e');
+      debugPrint('[WalletHomeScreen] escape sweep failed: $e');
     }
   }
 
   Future<void> _sendEscapeAlert() async {
     try {
-      await NostrService.instance.sendEscapeAlert(onStep: EscapeDebugLog.instance.log);
+      await NostrService.instance.sendEscapeAlert();
     } catch (e) {
       debugPrint('[WalletHomeScreen] escape Nostr alert failed: $e');
     }
@@ -427,186 +443,44 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
       backgroundColor: SatraColors.background,
       endDrawer: const SideMenuScreen(),
       body: SafeArea(
-        child: Builder(
-          builder: (context) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Stack(
+          children: [
+            Builder(
+              builder: (context) => Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Column(
                   children: [
-                    IconButton(
-                      icon: Icon(_balanceHidden ? Icons.visibility_off : Icons.visibility, color: SatraColors.medium),
-                      onPressed: () => setState(() => _balanceHidden = !_balanceHidden),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.menu, color: SatraColors.navy),
-                      onPressed: () => Scaffold.of(context).openEndDrawer(),
-                    ),
-                  ],
-                ),
-                FutureBuilder<void>(
-                  future: _connectFuture,
-                  builder: (context, connectSnapshot) {
-                    // Render the privacy state immediately, without waiting for
-                    // the wallet connection. This prevents the first frame from
-                    // showing either a loading state or stale balance values.
-                    if (_balanceHidden) return _buildHiddenBalance();
-
-                    if (connectSnapshot.connectionState !=
-                        ConnectionState.done) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 14),
-                        child: SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: SatraColors.medium),
-                        ),
-                      );
-                    }
-                    if (connectSnapshot.hasError) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 14),
-                        child: Text(
-                          'Não foi possível conectar à carteira',
-                          style: TextStyle(
-                              color: Colors.red, fontWeight: FontWeight.w600),
-                        ),
-                      );
-                    }
-                    return StreamBuilder<int>(
-                      stream: BreezService.instance.balanceStream,
-                      initialData: BreezService.instance.cachedBalanceSats,
-                      builder: (context, balanceSnapshot) {
-                        final sats = balanceSnapshot.data;
-                        final fiatRate = BreezService.instance
-                            .cachedFiatRate(_selectedFiatCurrency.code);
-                        final fiatText = sats != null && fiatRate != null
-                            ? _formatFiat(sats / 100000000 * fiatRate,
-                                _selectedFiatCurrency)
-                            : null;
-
-                        return Column(
-                          children: [
-                            ScaleTransition(
-                              scale: _balanceBumpScale,
-                              child: Text.rich(
-                                TextSpan(
-                                  children: [
-                                    TextSpan(
-                                      text: _balanceHidden
-                                          ? '*****'
-                                          : (sats != null ? _formatThousands(sats) : '···'),
-                                      style: const TextStyle(
-                                        fontSize: 30,
-                                        fontWeight: FontWeight.w900,
-                                        color: SatraColors.navy,
-                                      ),
-                                    ),
-                                    const TextSpan(
-                                      text: '  Sats',
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: SatraColors.navy),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            InkWell(
-                              borderRadius: BorderRadius.circular(16),
-                              onTap: _chooseFiatCurrency,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '≈ ${fiatText ?? '—'}',
-                                      style: const TextStyle(
-                                          color: SatraColors.medium,
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    const Icon(Icons.expand_more,
-                                        size: 18, color: SatraColors.medium),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: () => Navigator.of(context)
-                              .pushNamed(SatraRoutes.receive),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: SatraColors.navy,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(26)),
-                          ),
-                          child: const Text('Receber',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: SizedBox(
-                        height: 52,
-                        child: OutlinedButton(
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                              _balanceHidden
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: SatraColors.medium),
                           onPressed: () =>
-                              Navigator.of(context).pushNamed(SatraRoutes.send),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: SatraColors.navy,
-                            side: const BorderSide(color: SatraColors.light),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(26)),
-                          ),
-                          child: const Text('Enviar',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
+                              setState(() => _balanceHidden = !_balanceHidden),
                         ),
-                      ),
+                        IconButton(
+                          icon: const Icon(Icons.menu, color: SatraColors.navy),
+                          onPressed: () => Scaffold.of(context).openEndDrawer(),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'TRANSAÇÕES RECENTES',
-                    style: TextStyle(
-                        color: SatraColors.medium,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        letterSpacing: 0.5),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: SatraColors.light),
-                    ),
-                    child: StreamBuilder<List<Payment>>(
-                      stream: BreezService.instance.paymentsStream,
-                      builder: (context, paymentsSnapshot) {
-                        final payments = paymentsSnapshot.data;
-                        if (payments == null) {
-                          return const Center(
+                    FutureBuilder<void>(
+                      future: _connectFuture,
+                      builder: (context, connectSnapshot) {
+                        // Render the privacy state immediately, without waiting for
+                        // the wallet connection. This prevents the first frame from
+                        // showing either a loading state or stale balance values.
+                        if (_balanceHidden) return _buildHiddenBalance();
+
+                        if (connectSnapshot.connectionState !=
+                            ConnectionState.done) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
                             child: SizedBox(
                               height: 22,
                               width: 22,
@@ -615,46 +489,203 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                             ),
                           );
                         }
-                        if (payments.isEmpty) {
-                          return const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.history,
-                                  color: SatraColors.light, size: 32),
-                              SizedBox(height: 10),
-                              Text('Nenhuma transação ainda',
-                                  style: TextStyle(color: Colors.black54)),
-                            ],
+                        if (connectSnapshot.hasError) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            child: Text(
+                              'Não foi possível conectar à carteira',
+                              style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w600),
+                            ),
                           );
                         }
-                        return AppScrollbar(
-                          controller: _transactionsScrollController,
-                          child: ListView.separated(
-                            controller: _transactionsScrollController,
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            itemCount: payments.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1, color: SatraColors.background),
-                            itemBuilder: (context, index) => _TransactionRow(payment: payments[index]),
-                          ),
+                        return StreamBuilder<int>(
+                          stream: BreezService.instance.balanceStream,
+                          initialData: BreezService.instance.cachedBalanceSats,
+                          builder: (context, balanceSnapshot) {
+                            final sats = balanceSnapshot.data;
+                            final fiatRate = BreezService.instance
+                                .cachedFiatRate(_selectedFiatCurrency.code);
+                            final fiatText = sats != null && fiatRate != null
+                                ? _formatFiat(sats / 100000000 * fiatRate,
+                                    _selectedFiatCurrency)
+                                : null;
+
+                            return Column(
+                              children: [
+                                Text.rich(
+                                  TextSpan(
+                                    children: [
+                                      TextSpan(
+                                        text: _balanceHidden
+                                            ? '*****'
+                                            : (sats != null
+                                                ? _formatThousands(sats)
+                                                : '···'),
+                                        style: const TextStyle(
+                                          fontSize: 30,
+                                          fontWeight: FontWeight.w900,
+                                          color: SatraColors.navy,
+                                        ),
+                                      ),
+                                      const TextSpan(
+                                        text: '  Sats',
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: SatraColors.navy),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(16),
+                                  onTap: _chooseFiatCurrency,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 5),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          '≈ ${fiatText ?? '—'}',
+                                          style: const TextStyle(
+                                              color: SatraColors.medium,
+                                              fontWeight: FontWeight.w600),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Icon(Icons.expand_more,
+                                            size: 18,
+                                            color: SatraColors.medium),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         );
                       },
                     ),
-                  ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 52,
+                            child: ElevatedButton(
+                              onPressed: () => Navigator.of(context)
+                                  .pushNamed(SatraRoutes.receive),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: SatraColors.navy,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(26)),
+                              ),
+                              child: const Text('Receber',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: SizedBox(
+                            height: 52,
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context)
+                                  .pushNamed(SatraRoutes.send),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: SatraColors.navy,
+                                side:
+                                    const BorderSide(color: SatraColors.light),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(26)),
+                              ),
+                              child: const Text('Enviar',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'TRANSAÇÕES RECENTES',
+                        style: TextStyle(
+                            color: SatraColors.medium,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            letterSpacing: 0.5),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: SatraColors.light),
+                        ),
+                        child: StreamBuilder<List<Payment>>(
+                          stream: BreezService.instance.paymentsStream,
+                          builder: (context, paymentsSnapshot) {
+                            final payments = paymentsSnapshot.data;
+                            if (payments == null) {
+                              return const Center(
+                                child: SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: SatraColors.medium),
+                                ),
+                              );
+                            }
+                            if (payments.isEmpty) {
+                              return const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.history,
+                                      color: SatraColors.light, size: 32),
+                                  SizedBox(height: 10),
+                                  Text('Nenhuma transação ainda',
+                                      style: TextStyle(color: Colors.black54)),
+                                ],
+                              );
+                            }
+                            return ListView.separated(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              itemCount: payments.length,
+                              separatorBuilder: (context, index) =>
+                                  const Divider(
+                                      height: 1, color: SatraColors.background),
+                              itemBuilder: (context, index) =>
+                                  _TransactionRow(payment: payments[index]),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _EscapeSlider(onConfirmed: _onEscapeConfirmed),
+                    const SizedBox(height: 8),
+                    IconButton(
+                      icon: const Icon(Icons.info_outline,
+                          color: SatraColors.medium),
+                      onPressed: _openEscapeInfo,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                _EscapeSlider(onConfirmed: _onEscapeConfirmed),
-                const SizedBox(height: 8),
-                IconButton(
-                  icon:
-                      const Icon(Icons.info_outline, color: SatraColors.medium),
-                  onPressed: _openEscapeInfo,
-                ),
-              ],
-            ),
               ),
-              _buildPaymentBanner(),
-            ],
-          ),
+            ),
+            _buildPaymentBanner(),
+          ],
         ),
       ),
     );
@@ -678,7 +709,8 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
               child: ScaleTransition(
                 scale: _paymentBannerScale,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   decoration: BoxDecoration(
                     color: SatraColors.navy,
                     borderRadius: BorderRadius.circular(20),
@@ -696,15 +728,20 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                       Container(
                         width: 36,
                         height: 36,
-                        decoration: const BoxDecoration(color: Color(0xFF3FBF6F), shape: BoxShape.circle),
+                        decoration: const BoxDecoration(
+                            color: Color(0xFF3FBF6F), shape: BoxShape.circle),
                         alignment: Alignment.center,
-                        child: const Icon(Icons.arrow_downward, color: Colors.white, size: 20),
+                        child: const Icon(Icons.arrow_downward,
+                            color: Colors.white, size: 20),
                       ),
                       const SizedBox(width: 12),
                       Flexible(
                         child: Text(
                           _paymentBannerText ?? '',
-                          style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],

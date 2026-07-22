@@ -60,7 +60,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                         child: Text(
                           'Ler QR Code',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold),
                         ),
                       ),
                       IconButton.filled(
@@ -86,8 +89,11 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                 const Spacer(),
                 Container(
                   margin: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(18)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(18)),
                   child: const Text(
                     'Aponte a câmera para uma fatura ou endereço em QR Code.',
                     textAlign: TextAlign.center,
