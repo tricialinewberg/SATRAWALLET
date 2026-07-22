@@ -14,4 +14,5 @@ class SatraRoutes {
   static const trustedContacts = '/wallet-home/trusted-contacts';
   static const pendingEscapeRecovery = '/wallet-home/pending-escape-recovery';
   static const nfcKeyPasswordSetup = '/wallet-home/nfc-key-password';
+  static const inheritance = '/wallet-home/inheritance';
 }

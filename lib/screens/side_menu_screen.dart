@@ -102,6 +102,14 @@ class SideMenuScreen extends StatelessWidget {
               },
             ),
             _MenuTile(
+              icon: Icons.family_restroom_outlined,
+              label: 'Herança',
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pushNamed(SatraRoutes.inheritance);
+              },
+            ),
+            _MenuTile(
               icon: Icons.lock_outline,
               label: 'Trocar PIN',
               onTap: () {

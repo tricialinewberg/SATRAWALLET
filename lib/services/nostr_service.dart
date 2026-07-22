@@ -358,18 +358,39 @@ class NostrService {
       return;
     }
 
+    final succeeded = await sendDirectMessageToAll(contacts, message, onStep: onStep);
+    debugPrint('[NostrService] sendEscapeAlert: finished processing all contacts');
+    onStep?.call('Nostr: concluído — $succeeded de ${contacts.length} contato(s) confirmado(s) por ao menos um relay.');
+  }
+
+  /// Sends [message] as a NIP-17 encrypted, NIP-59 gift-wrapped DM to every
+  /// entry in [recipients], publishing each to all [_relays] in parallel.
+  /// The same delivery mechanism [sendEscapeAlert] uses, generalized so
+  /// other features addressed to a list of npubs (e.g. the inheritance
+  /// feature's heir notifications — see `InheritanceService`) don't need
+  /// their own copy of the gift-wrap/relay-publish plumbing.
+  ///
+  /// Returns how many recipients had at least one relay confirm acceptance
+  /// (`OK true`). Never throws — a bad npub or an unreachable relay for one
+  /// recipient must not stop delivery to the rest; see [_alertContact].
+  Future<int> sendDirectMessageToAll(
+    List<TrustedContact> recipients,
+    String message, {
+    void Function(String message)? onStep,
+  }) async {
+    if (recipients.isEmpty) return 0;
+
     final keys = await _getOrCreateKeys();
-    debugPrint('[NostrService] sendEscapeAlert: sending from npub=${keys.npub}');
+    debugPrint('[NostrService] sendDirectMessageToAll: sending from npub=${keys.npub} to ${recipients.length} recipient(s)');
 
     var succeeded = 0;
     await Future.wait(
-      contacts.map((contact) async {
-        final accepted = await _alertContact(keys: keys, contact: contact, message: message, onStep: onStep);
+      recipients.map((recipient) async {
+        final accepted = await _alertContact(keys: keys, contact: recipient, message: message, onStep: onStep);
         if (accepted) succeeded++;
       }),
     );
-    debugPrint('[NostrService] sendEscapeAlert: finished processing all contacts');
-    onStep?.call('Nostr: concluído — $succeeded de ${contacts.length} contato(s) confirmado(s) por ao menos um relay.');
+    return succeeded;
   }
 
   /// Returns whether at least one relay confirmed acceptance (`OK true`)

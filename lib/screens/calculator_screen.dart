@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../routes.dart';
+import '../services/inheritance_service.dart';
 import '../services/pin_service.dart';
 import '../widgets/calculator_button.dart';
 
@@ -214,6 +217,12 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         if (!mounted) return;
         if (matches) {
           _clear();
+          // Fire-and-forget: this is the one signal the inheritance
+          // feature has that the wallet is still in use (see
+          // InheritanceService.handleSuccessfulUnlock's doc comment) —
+          // it does its own network I/O (Nostr) and must never delay or
+          // fail a normal PIN unlock.
+          unawaited(InheritanceService.instance.handleSuccessfulUnlock());
           Navigator.of(context).pushNamedAndRemoveUntil(
             SatraRoutes.walletHome,
             (route) => false,

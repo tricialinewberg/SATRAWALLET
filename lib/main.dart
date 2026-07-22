@@ -6,6 +6,7 @@ import 'route_observer.dart';
 import 'routes.dart';
 import 'screens/calculator_screen.dart';
 import 'screens/escape_confirmation_screen.dart';
+import 'screens/inheritance_setup_screen.dart';
 import 'screens/nfc_key_password_setup_screen.dart';
 import 'screens/nfc_transfer_screen.dart';
 import 'screens/pending_escape_recovery_screen.dart';
@@ -50,6 +51,7 @@ class MyApp extends StatelessWidget {
         SatraRoutes.trustedContacts: (context) => const TrustedContactsScreen(),
         SatraRoutes.pendingEscapeRecovery: (context) => const PendingEscapeRecoveryScreen(),
         SatraRoutes.nfcKeyPasswordSetup: (context) => const NfcKeyPasswordSetupScreen(),
+        SatraRoutes.inheritance: (context) => const InheritanceSetupScreen(),
       },
     );
   }
