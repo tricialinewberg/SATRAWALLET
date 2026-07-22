@@ -4,9 +4,9 @@ import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../screens/qr_scanner_screen.dart';
 import '../services/breez_service.dart';
 import '../theme/colors.dart';
-import '../widgets/app_scrollbar.dart';
 
 /// Send flow: paste a Lightning invoice, Lightning address, on-chain
 /// Bitcoin address, or Spark address/invoice, confirm.
