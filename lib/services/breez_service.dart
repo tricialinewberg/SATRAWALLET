@@ -18,6 +18,7 @@ class BreezService {
   static const _mnemonicKey = 'satra_wallet_mnemonic';
   static const _pendingEscapeMnemonicKey = 'satra_pending_escape_mnemonic';
   static const _escapeWalletMnemonicKey = 'satra_escape_wallet_mnemonic';
+  static const _fiatCurrencyKey = 'satra_fiat_currency';
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   final StreamController<int> _balanceController = StreamController<int>.broadcast();
@@ -26,7 +27,8 @@ class BreezService {
   BreezSdk? _sdk;
   StreamSubscription<SdkEvent>? _eventSubscription;
   Future<void>? _initializing;
-  double? _cachedBrlPerBtc;
+  Map<String, double> _cachedFiatRates = const {};
+  int? _cachedBalanceSats;
 
   /// Whether [BreezSdkSparkLib.init] has run. That call wires up the native
   /// flutter_rust_bridge library for the whole process and — unlike
@@ -40,13 +42,17 @@ class BreezService {
   /// whenever a payment lands or the wallet re-syncs while the app is open.
   Stream<int> get balanceStream => _balanceController.stream;
 
+  /// Most recently fetched balance, so a newly-mounted listener can render
+  /// immediately even though [balanceStream] is a broadcast stream.
+  int? get cachedBalanceSats => _cachedBalanceSats;
+
   /// Emits the most recent payments (newest first) right after connecting,
   /// and again whenever a payment lands or the wallet re-syncs.
   Stream<List<Payment>> get paymentsStream => _paymentsController.stream;
 
   bool get isConnected => _sdk != null;
 
-  double? get cachedBrlPerBtc => _cachedBrlPerBtc;
+  double? cachedFiatRate(String currencyCode) => _cachedFiatRates[currencyCode];
 
   /// Connects to the Breez SDK, generating a wallet (mnemonic) on first run
   /// or reconnecting with the stored one otherwise. Safe to call repeatedly
@@ -107,7 +113,7 @@ class BreezService {
 
     await _refreshBalance();
     await _refreshPayments();
-    _cachedBrlPerBtc = await _fetchBrlPerBtc();
+    _cachedFiatRates = await _fetchFiatRates();
   }
 
   Future<String> _storageDir() async {
@@ -127,7 +133,9 @@ class BreezService {
 
   Future<void> _refreshBalance() async {
     final info = await _requireSdk.getInfo(request: const GetInfoRequest(ensureSynced: false));
-    _balanceController.add(info.balanceSats.toInt());
+    final balanceSats = info.balanceSats.toInt();
+    _cachedBalanceSats = balanceSats;
+    _balanceController.add(balanceSats);
   }
 
   /// Recent payments, newest first. Kept small — this only backs the
@@ -274,23 +282,25 @@ class BreezService {
     return response.payment;
   }
 
-  Future<double?> _fetchBrlPerBtc() async {
+  Future<Map<String, double>> _fetchFiatRates() async {
     try {
       final response = await _requireSdk.listFiatRates();
-      for (final rate in response.rates) {
-        if (rate.coin == 'BRL') return rate.value;
-      }
-      return null;
+      return {for (final rate in response.rates) rate.coin: rate.value};
     } catch (_) {
-      return null;
+      return const {};
     }
   }
 
-  /// Re-fetches the BRL/BTC rate from the SDK's fiat rate feed.
-  Future<double?> refreshBrlPerBtc() async {
-    _cachedBrlPerBtc = await _fetchBrlPerBtc();
-    return _cachedBrlPerBtc;
+  /// Re-fetches every available BTC/fiat rate from the SDK's rate feed.
+  Future<void> refreshFiatRates() async {
+    _cachedFiatRates = await _fetchFiatRates();
   }
+
+  Future<String> getSelectedFiatCurrency() async =>
+      await _secureStorage.read(key: _fiatCurrencyKey) ?? 'BRL';
+
+  Future<void> setSelectedFiatCurrency(String currencyCode) =>
+      _secureStorage.write(key: _fiatCurrencyKey, value: currencyCode);
 
   Future<String> _getOrCreateMnemonic() async {
     final existing = await _secureStorage.read(key: _mnemonicKey);

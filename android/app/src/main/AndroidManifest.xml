@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Required to read/write the physical recovery key tag. -->
     <uses-permission android:name="android.permission.NFC"/>
+    <!-- Required to scan payment QR codes on the send screen. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
     <application
         android:label="Calculadora"
         android:name="${applicationName}"
