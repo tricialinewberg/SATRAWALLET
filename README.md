@@ -16,7 +16,7 @@ Isso inclui:
 - Pessoas planejando a saída de uma relação abusiva, que precisam de uma reserva financeira invisível pra viabilizar esse plano
 - Rede de apoio (familiares, ONGs, assistentes sociais) que atuam com essas mulheres
 
-O ponto em comum não é ausência de **autonomia** sobre a própria renda.
+O ponto em comum é ausência de **autonomia** sobre a própria renda.
 
 # Fluxo de uso completo:
 ### Onboarding (primeiro acesso)
