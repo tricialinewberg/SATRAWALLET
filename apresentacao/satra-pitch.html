@@ -75,25 +75,15 @@
   /* ---------- brand mark (recurring, from slide 2 onward) ---------- */
   .brandmark{
     position:fixed;
-    top:28px;
-    left:32px;
-    display:flex;
-    align-items:center;
-    gap:8px;
+    top:22px;
+    left:28px;
     opacity:0;
     transition:opacity .5s ease;
     z-index:5;
     pointer-events:none;
   }
-  .brandmark.show{opacity:0.85;}
-  .brandmark svg{width:18px;height:18px;}
-  .brandmark span{
-    font-family:var(--body);
-    font-weight:600;
-    letter-spacing:0.14em;
-    font-size:12px;
-    color:var(--sky);
-  }
+  .brandmark.show{opacity:0.88;}
+  .brandmark img{ height:32px; width:auto; display:block; }
 
   /* ---------- nav / counter ---------- */
   .nav{
@@ -629,8 +619,7 @@
 <body>
 
 <div class="brandmark" id="brandmark">
-  <svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" fill="#A9D6E5"/></svg>
-  <span>SATRA</span>
+  <img src="recursos/logo.png" alt="Satra">
 </div>
 
 <div class="deck" id="deck">
@@ -699,11 +688,7 @@
   <!-- 2 — LOGO -->
   <section class="slide" id="slide-logo">
     <div class="logo-wrap">
-      <svg class="logo-mark" viewBox="0 0 96 96" fill="none">
-        <circle cx="48" cy="48" r="47" stroke="#1B4F8C" stroke-width="1.4" opacity="0.5"/>
-        <path d="M54 16 26 54h20l-4 26 30-38H52l2-26Z" fill="#1B4F8C"/>
-      </svg>
-      <div class="wordmark">Satra</div>
+      <img src="recursos/logo.png" alt="Satra" class="logo-mark" style="width:auto; height:160px; border-radius:0;">
       <div class="tagline">uma calculadora por fora</div>
     </div>
   </section>
