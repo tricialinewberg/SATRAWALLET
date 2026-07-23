@@ -186,20 +186,25 @@
   .thesis p{
     font-family:var(--display);
     font-style:italic;
-    font-weight:400;
-    font-size:clamp(28px, 4.4vw, 54px);
-    line-height:1.3;
+    font-weight:600;
+    font-size:clamp(32px, 5.2vw, 64px);
+    line-height:1.25;
+    color: var(--ice);
   }
-  .thesis .word{
-    display:inline-block;
-    opacity:0;
-    filter:blur(6px);
-    transform:translateY(6px);
-    transition: opacity .5s ease, filter .5s ease, transform .5s ease;
+  .thesis .strike{
+    color: #F7A429;
+    font-weight: 600;
   }
-  .thesis .word.in{ opacity:1; filter:blur(0); transform:translateY(0); }
-  .thesis .strike{ color:var(--sky-dim); }
-  .thesis .highlight{ color:var(--sky); }
+  .thesis .highlight{
+    color: #F7A429;
+    font-style: normal;
+    font-weight: 900;
+    font-size: 1.24em;
+    background: rgba(247,147,26,0.15);
+    padding: 4px 12px;
+    border-radius: 6px;
+    letter-spacing: 0.02em;
+  }
 
   /* =========================================================
      SLIDE 2 — Logo reveal
@@ -289,6 +294,22 @@
     color:var(--sky);
     text-transform:uppercase;
   }
+  .prod-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 64px;
+  }
+  .prod-phone-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .prod-text-col {
+    text-align: left;
+    max-width: 380px;
+  }
 
   /* =========================================================
      SLIDES 6-8 — Texto de apoio (big type)
@@ -376,8 +397,14 @@
     display: flex;
     gap: 20px;
     align-items: flex-start;
-    padding: 20px 0;
+    padding: 18px 12px;
     border-bottom: 1px solid var(--hairline);
+    border-radius: 8px;
+    transition: background 0.22s ease, border-color 0.22s ease;
+  }
+  .proposal-row:hover {
+    background: rgba(169,214,229,0.07);
+    border-bottom-color: rgba(169,214,229,0.32);
   }
   .proposal-row:last-child { border-bottom: none; }
   .proposal-row-icon {
@@ -387,18 +414,24 @@
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
     color: var(--sky);
+    transition: background 0.22s ease, color 0.22s ease, transform 0.22s ease;
+  }
+  .proposal-row:hover .proposal-row-icon {
+    background: rgba(27,79,140,0.75);
+    color: var(--ice);
+    transform: scale(1.1);
   }
   .proposal-row-content { flex: 1; }
   .proposal-row-title {
     font-family: var(--body);
     font-weight: 700;
-    font-size: 16px;
+    font-size: 18px;
     color: var(--ice);
     margin-bottom: 6px;
   }
   .proposal-row-body {
     font-family: var(--body);
-    font-size: 13px;
+    font-size: 14px;
     color: rgba(169,214,229,0.75);
     line-height: 1.65;
   }
@@ -467,26 +500,60 @@
   }
   .tl-step {
     font-family: var(--body);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.18em;
     color: var(--sky);
     text-transform: uppercase;
     margin-bottom: 7px;
   }
+  .tl-icon {
+    width: 38px;
+    height: 38px;
+    margin: 0 auto 12px;
+    border: 1px solid rgba(169,214,229,0.42);
+    border-radius: 50%;
+    background: rgba(169,214,229,0.09);
+    color: var(--sky);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tl-icon svg { width: 19px; height: 19px; }
   .tl-title {
     font-family: var(--body);
     font-weight: 700;
-    font-size: 14px;
+    font-size: 16px;
     color: var(--ice);
     line-height: 1.3;
     margin-bottom: 8px;
   }
   .tl-body {
     font-family: var(--body);
-    font-size: 12px;
+    font-size: 13px;
     color: rgba(169,214,229,0.7);
     line-height: 1.62;
+    transition: color 0.22s ease;
+  }
+  .tl-above, .tl-below {
+    transition: background 0.22s ease;
+    border-radius: 10px;
+    cursor: default;
+  }
+  .tl-above:hover, .tl-below:hover {
+    background: rgba(169,214,229,0.08);
+  }
+  .tl-above:hover .tl-step,
+  .tl-below:hover .tl-step {
+    color: var(--ice);
+  }
+  .tl-above:hover .tl-title,
+  .tl-below:hover .tl-title {
+    color: var(--sky);
+  }
+  .tl-above:hover .tl-body,
+  .tl-below:hover .tl-body {
+    color: rgba(169,214,229,0.92);
   }
 
   /* =========================================================
@@ -523,6 +590,33 @@
     letter-spacing:0.08em;
     color:var(--sky-dim);
   }
+  .thanks-team {
+    margin-top: 40px;
+    display: flex;
+    gap: 40px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .thanks-member {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .thanks-name {
+    font-family: var(--body);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--ice);
+    letter-spacing: 0.02em;
+  }
+  .thanks-role {
+    font-family: var(--body);
+    font-size: 10px;
+    color: var(--sky-dim);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
 
   /* =========================================================
      SLIDE 10 — Feature cards
@@ -544,6 +638,12 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    transition: background 0.22s ease, border-color 0.22s ease, transform 0.22s ease;
+  }
+  .feature-card:hover {
+    background: rgba(169,214,229,0.13);
+    border-color: rgba(169,214,229,0.4);
+    transform: translateY(-5px);
   }
   .feature-icon {
     width: 44px; height: 44px;
@@ -689,72 +789,50 @@
   <section class="slide" id="slide-logo">
     <div class="logo-wrap">
       <img src="recursos/logo.png" alt="Satra" class="logo-mark" style="width:auto; height:160px; border-radius:0;">
-      <div class="tagline">uma calculadora por fora</div>
     </div>
   </section>
 
   <!-- 3 — PRODUTO: calculadora -->
   <section class="slide product-slide" id="slide-prod-1">
-    <div class="enter">
-      <div class="step-tag" style="margin-bottom:14px;">Por fora</div>
-      <div class="phone">
-        <div class="phone-screen">
-          <div class="screen-placeholder">
-            <div class="play">▶</div>
-            <span>Vídeo: calculadora.mp4</span>
-            <small>calculadora funcionando de verdade</small>
+    <div class="prod-row enter">
+      <div class="prod-phone-col">
+        <div class="step-tag">Por fora</div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="screen-placeholder">
+              <div class="play">▶</div>
+              <span>Vídeo: calculadora.mp4</span>
+              <small>calculadora funcionando de verdade</small>
+            </div>
           </div>
         </div>
       </div>
+      <p class="product-caption prod-text-col">Uma calculadora de verdade ao abrir.</p>
     </div>
-    <p class="product-caption enter" style="margin-top:32px;">Uma calculadora de verdade — pra quem olha por cima do ombro.</p>
   </section>
 
   <!-- 4 — PRODUTO: PIN -->
   <section class="slide product-slide" id="slide-prod-2">
-    <div class="enter">
-      <div class="step-tag" style="margin-bottom:14px;">A chave</div>
-      <div class="phone">
-        <div class="phone-screen">
-          <div class="screen-placeholder">
-            <div class="play">▶</div>
-            <span>Vídeo: digitando-pin.mp4</span>
-            <small>uma sequência que só ela sabe</small>
+    <div class="prod-row enter">
+      <div class="prod-phone-col">
+        <div class="step-tag">A chave</div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="screen-placeholder">
+              <div class="play">▶</div>
+              <span>Vídeo: digitando-pin.mp4</span>
+              <small>uma sequência que só ela sabe</small>
+            </div>
           </div>
         </div>
       </div>
+      <p class="product-caption prod-text-col">Um PIN único para acesso da carteira.</p>
     </div>
-    <p class="product-caption enter" style="margin-top:32px;">Um PIN que ninguém suspeita que existe.</p>
   </section>
 
-  <!-- 5 — PRODUTO: wallet -->
-  <section class="slide product-slide" id="slide-prod-3">
-    <div class="enter">
-      <div class="step-tag" style="margin-bottom:14px;">Por dentro</div>
-      <div class="phone">
-        <div class="phone-screen">
-          <div class="screen-placeholder">
-            <div class="play">▶</div>
-            <span>Vídeo: entrando-satra.mp4</span>
-            <small>a carteira aparece</small>
-          </div>
-        </div>
-      </div>
-    </div>
-    <p class="product-caption enter" style="margin-top:32px;">E, por dentro, uma reserva que é só dela.</p>
-  </section>
+  <!-- 5 — PRODUTO: wallet (removido) -->
 
-  <!-- 6 — TEXTO DE APOIO 1 -->
-  <section class="slide" id="slide-text-1">
-    <p class="bigtype enter">A liberdade que existe em sil&ecirc;ncio &mdash; at&eacute; o momento em que <span class="accent">voc&ecirc; precisar.</span></p>
-  </section>
-
-  <!-- 7 — TEXTO DE APOIO 2 -->
-  <section class="slide" id="slide-text-2">
-    <p class="bigtype enter">[TEXTO 2 — <span class="accent">visibilidade social zero</span> como diferencial]</p>
-  </section>
-
-  <!-- 8 — COMO O ESCAPE FUNCIONA -->
+  <!-- 6 — COMO O ESCAPE FUNCIONA -->
   <section class="slide" id="slide-text-3">
     <div class="enter" style="width:100%; display:flex; flex-direction:column; align-items:center;">
       <div class="eyebrow">Como o Escape Funciona</div>
@@ -767,7 +845,7 @@
           <div class="tl-above" style="grid-column:1;">
             <div class="tl-step">01</div>
             <div class="tl-title">Configura&ccedil;&atilde;o &Uacute;nica</div>
-            <div class="tl-body">A usu&aacute;ria define, uma s&oacute; vez, os <strong>contatos de confian&ccedil;a</strong> via Nostr e a <strong>carteira segura</strong> de destino para onde o saldo ser&aacute; enviado.</div>
+            <div class="tl-body">A usu&aacute;ria define, uma s&oacute; vez, os <strong>contatos de confian&ccedil;a</strong> via Nostr e a <strong>carteira segura</strong> de destino &mdash; armazenada na chave f&iacute;sica NFC.</div>
           </div>
           <div class="tl-dot" style="grid-column:1; background:#A9D6E5; outline-color:#A9D6E5;"></div>
 
@@ -775,15 +853,15 @@
           <div class="tl-dot" style="grid-column:2; background:#7BBFD4; outline-color:#7BBFD4;"></div>
           <div class="tl-below" style="grid-column:2;">
             <div class="tl-step">02</div>
-            <div class="tl-title">O Gatilho</div>
-            <div class="tl-body">Na <strong>calculadora disfarce</strong>, a usu&aacute;ria digita um c&oacute;digo secreto pr&eacute;-definido. Nenhum bot&atilde;o &oacute;bvio. Nenhuma tela suspeita.</div>
+            <div class="tl-title">Deslize para o Escape</div>
+            <div class="tl-body">Dentro da carteira, a usu&aacute;ria aciona o bot&atilde;o <strong>&ldquo;deslize para o modo de escape&rdquo;</strong>.</div>
           </div>
 
           <!-- 03: acima -->
           <div class="tl-above" style="grid-column:3;">
             <div class="tl-step">03</div>
-            <div class="tl-title">Transfer&ecirc;ncia Instant&acirc;nea</div>
-            <div class="tl-body">O saldo &eacute; enviado via <strong>Lightning Network</strong> em segundos para a carteira segura. R&aacute;pido, irrevers&iacute;vel, sem rastro no aparelho.</div>
+            <div class="tl-title">Transfer&ecirc;ncia para a Chave F&iacute;sica</div>
+            <div class="tl-body">O saldo &eacute; transferido via <strong>Lightning Network</strong> para a carteira armazenada na <strong>chave NFC f&iacute;sica</strong>. R&aacute;pido, irrevers&iacute;vel, fora do aparelho.</div>
           </div>
           <div class="tl-dot" style="grid-column:3; background:#4FA8C9; outline-color:#4FA8C9;"></div>
 
@@ -791,16 +869,14 @@
           <div class="tl-dot" style="grid-column:4; background:#1B7FA8; outline-color:#1B7FA8;"></div>
           <div class="tl-below" style="grid-column:4;">
             <div class="tl-step">04</div>
-            <div class="tl-title">Alerta Silencioso</div>
-            <div class="tl-body">Um <strong>DM criptografado</strong> &eacute; enviado via Nostr aos contatos de confian&ccedil;a. O app retorna &agrave; calculadora. Nenhum vest&iacute;gio.</div>
+            <div class="tl-title">Contatos Alertados</div>
+            <div class="tl-body">Uma <strong>mensagem via Nostr</strong> &eacute; enviada aos contatos de confian&ccedil;a avisando que o bot&atilde;o de escape foi ativado.</div>
           </div>
 
         </div>
       </div>
     </div>
   </section>
-
-  <!-- 9 — DEMO AO VIVO -->
   <section class="slide demo-slide" id="slide-demo">
     <div class="enter">
       <div class="eyebrow">Ao vivo</div>
@@ -857,7 +933,7 @@
     <div class="enter">
       <div class="eyebrow">Nossa Vis&atilde;o</div>
       <p class="bigtype">N&atilde;o &eacute; sobre criptografia mais forte.<br>&Eacute; sobre <span class="accent">nunca levantar suspeita.</span></p>
-      <p style="margin-top:28px; font-family:var(--body); font-size:16px; color:var(--sky-dim); max-width:560px; line-height:1.65; text-align:center;">O Satra protege contra quem vasculha o celular &mdash; n&atilde;o contra um hacker. Uma reserva financeira que existe sem nunca parecer existir.</p>
+      <p style="margin-top:28px; font-family:var(--body); font-size:16px; color:var(--sky-dim); max-width:560px; line-height:1.65; text-align:center; margin-left:auto; margin-right:auto;">O Satra protege contra quem vasculha o celular &mdash; n&atilde;o contra um hacker. Uma reserva financeira que existe sem nunca parecer existir.</p>
     </div>
   </section>
 
@@ -868,7 +944,7 @@
       <div class="proposal-list">
 
         <div class="proposal-row">
-          <div class="proposal-row-icon">
+          <div class="proposal-row-icon fi-orange">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
           </div>
           <div class="proposal-row-content">
@@ -878,7 +954,7 @@
         </div>
 
         <div class="proposal-row">
-          <div class="proposal-row-icon">
+          <div class="proposal-row-icon fi-blue">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           </div>
           <div class="proposal-row-content">
@@ -888,7 +964,7 @@
         </div>
 
         <div class="proposal-row">
-          <div class="proposal-row-icon">
+          <div class="proposal-row-icon fi-purple">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
           <div class="proposal-row-content">
@@ -914,32 +990,40 @@
           <!-- 1: abaixo -->
           <div class="tl-dot" style="grid-column:1;"></div>
           <div class="tl-below" style="grid-column:1;">
-            <div class="tl-step">1.</div>
-            <div class="tl-title">Valida&ccedil;&atilde;o MVP</div>
-            <div class="tl-body">Fechamento do ciclo no Hackathon, estabiliza&ccedil;&atilde;o dos fluxos de NFC e testes reais de usabilidade com a calculadora.</div>
+            <div class="tl-step tl-icon" aria-label="Confiabilidade do escape">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12a7 7 0 0 1 14 0"/><path d="M8.5 15.5a3.5 3.5 0 0 1 7 0"/><path d="M12 19h.01"/><path d="m17 4 2 2 3-3"/></svg>
+            </div>
+            <div class="tl-title">Confiabilidade do Escape</div>
+            <div class="tl-body">Fila de retentativas e confirma&ccedil;&atilde;o de entrega para que transfer&ecirc;ncias e alertas Nostr resistam a conex&atilde;o inst&aacute;vel, relays indispon&iacute;veis e encerramento do app.</div>
           </div>
 
           <!-- 2: acima -->
           <div class="tl-above" style="grid-column:2;">
-            <div class="tl-step">2.</div>
-            <div class="tl-title">Heran&ccedil;a Criptogr&aacute;fica</div>
-            <div class="tl-body">Implementa&ccedil;&atilde;o de libera&ccedil;&atilde;o autom&aacute;tica dos dados de acesso para herdeiros programados via Nostr em caso de inatividade prolongada.</div>
+            <div class="tl-step tl-icon" aria-label="Segurança auditável">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            </div>
+            <div class="tl-title">Seguran&ccedil;a Audit&aacute;vel</div>
+            <div class="tl-body">Modelo de amea&ccedil;as, revis&atilde;o independente de criptografia e testes de invas&atilde;o para validar o disfarce, o armazenamento local e os fluxos de recupera&ccedil;&atilde;o.</div>
           </div>
           <div class="tl-dot" style="grid-column:2;"></div>
 
           <!-- 3: abaixo -->
           <div class="tl-dot" style="grid-column:3;"></div>
           <div class="tl-below" style="grid-column:3;">
-            <div class="tl-step">3.</div>
-            <div class="tl-title">Auditoria Local</div>
-            <div class="tl-body">Foco intenso em seguran&ccedil;a forense mobile para garantir que vest&iacute;gios de uso de mem&oacute;ria ou bateria n&atilde;o entreguem o disfarce.</div>
+            <div class="tl-step tl-icon" aria-label="Validação com a rede de apoio">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div class="tl-title">Valida&ccedil;&atilde;o com a Rede de Apoio</div>
+            <div class="tl-body">Co-cria&ccedil;&atilde;o com sobreviventes, assistentes sociais e organiza&ccedil;&otilde;es parceiras para testar linguagem, fluxo de escape e protocolos de acolhimento sem expor usu&aacute;rias.</div>
           </div>
 
           <!-- 4: acima -->
           <div class="tl-above" style="grid-column:4;">
-            <div class="tl-step">4.</div>
-            <div class="tl-title">Distribui&ccedil;&atilde;o F-Droid</div>
-            <div class="tl-body">Lan&ccedil;amento em lojas de aplicativos open source (F-Droid) e distribui&ccedil;&atilde;o descentralizada para mitigar bloqueios nas app stores padr&atilde;o.</div>
+            <div class="tl-step tl-icon" aria-label="Recuperação resiliente">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 5.5 3 3"/><path d="M12 12 9 9"/></svg>
+            </div>
+            <div class="tl-title">Recupera&ccedil;&atilde;o Resiliente</div>
+            <div class="tl-body">Evolu&ccedil;&atilde;o da chave NFC com c&oacute;pias cifradas, plano para perda do aparelho e recupera&ccedil;&atilde;o assistida, sem concentrar a seguran&ccedil;a em um &uacute;nico ponto.</div>
           </div>
           <div class="tl-dot" style="grid-column:4;"></div>
 
@@ -954,6 +1038,20 @@
       <img src="recursos/icon_logo.png" alt="Satra" style="height:96px; width:auto; margin-bottom:22px; opacity:0.9;">
       <div class="thanks-title">Obrigada.</div>
       <div class="thanks-sub">SATRA WALLET · HACK4FREEDOM 2026</div>
+      <div class="thanks-team">
+        <div class="thanks-member">
+          <span class="thanks-name">Trícia Linewberg</span>
+          <span class="thanks-role">Bitcoiner</span>
+        </div>
+        <div class="thanks-member">
+          <span class="thanks-name">Ingrid Gama</span>
+          <span class="thanks-role">Bitcoiner</span>
+        </div>
+        <div class="thanks-member">
+          <span class="thanks-name">Giovanna Gardinali</span>
+          <span class="thanks-role">Front Developer</span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1027,30 +1125,8 @@
   function typeThesis(){
     const thesis = document.getElementById('thesis');
     const target = document.getElementById('thesis-text');
-    const parts = [
-      {t:'O problema não é', cls:''},
-      {t:'falta de dinheiro', cls:'strike'},
-      {t:',', cls:''},
-      {t:'é falta de', cls:''},
-      {t:'controle', cls:'highlight'},
-      {t:'sobre o próprio dinheiro.', cls:''},
-    ];
-    target.innerHTML = '';
-    const words = [];
-    parts.forEach(p => {
-      p.t.split(' ').forEach(w => words.push({w, cls:p.cls}));
-    });
-    words.forEach(({w,cls}) => {
-      const span = document.createElement('span');
-      span.className = 'word' + (cls ? ' ' + cls : '');
-      span.textContent = w + '\u00A0';
-      target.appendChild(span);
-    });
+    target.innerHTML = 'O problema não é <span class="strike">falta de dinheiro</span>, é falta de <span class="highlight">controle</span> sobre o próprio dinheiro.';
     thesis.classList.add('show');
-    const wordEls = target.querySelectorAll('.word');
-    wordEls.forEach((el, i) => {
-      headlineTimers.push(setTimeout(() => el.classList.add('in'), i * 90));
-    });
   }
 
   function next(){ if(current < total-1){ current++; showSlide(current); } }
