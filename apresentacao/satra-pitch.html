@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Satra — Pitch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /*
+    COMO SUBSTITUIR OS PLACEHOLDERS
+    --------------------------------
+    1) Manchetes (slide 1): cada .clipping tem um comentário indicando
+       qual print colocar. Troque o conteúdo do <div class="clipping-inner">
+       por <img src="headline-1.jpg" alt="..."> mantendo a classe no pai.
+    2) Vídeos de tela (slides 3-5): troque o <div class="screen-placeholder">
+       por <video src="calculadora.mp4" autoplay muted loop playsinline></video>
+       (mesmas dimensões, dentro do .phone-screen).
+    3) Textos de apoio (slides 6-8): edite o texto dentro de [TEXTO N].
+    4) Próximos passos (slide 12): edite os <li> da lista.
+  */
+
+  :root{
+    --navy:#0B2545;
+    --navy-deep:#071A34;
+    --blue:#1B4F8C;
+    --sky:#A9D6E5;
+    --ice:#F4F8FB;
+    --sky-dim: rgba(169,214,229,0.55);
+    --hairline: rgba(169,214,229,0.18);
+    --display: 'Fraunces', Georgia, serif;
+    --body: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  *{box-sizing:border-box; margin:0; padding:0;}
+
+  html,body{
+    height:100%;
+    background:var(--navy);
+    color:var(--ice);
+    font-family:var(--body);
+    overflow:hidden;
+  }
+
+  .deck{
+    position:relative;
+    width:100vw;
+    height:100vh;
+  }
+
+  .slide{
+    position:absolute;
+    inset:0;
+    display:none;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:6vh 8vw;
+    text-align:center;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(27,79,140,0.35), transparent 60%),
+      var(--navy);
+  }
+  .slide.visible{ display:flex; }
+  .slide .enter{
+    opacity:0;
+    transform:translateY(14px);
+    transition: opacity .6s ease, transform .6s ease;
+  }
+  .slide.active .enter{
+    opacity:1;
+    transform:translateY(0);
+  }
+
+  /* ---------- brand mark (recurring, from slide 2 onward) ---------- */
+  .brandmark{
+    position:fixed;
+    top:28px;
+    left:32px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    opacity:0;
+    transition:opacity .5s ease;
+    z-index:5;
+    pointer-events:none;
+  }
+  .brandmark.show{opacity:0.85;}
+  .brandmark svg{width:18px;height:18px;}
+  .brandmark span{
+    font-family:var(--body);
+    font-weight:600;
+    letter-spacing:0.14em;
+    font-size:12px;
+    color:var(--sky);
+  }
+
+  /* ---------- nav / counter ---------- */
+  .nav{
+    position:fixed;
+    bottom:28px;
+    right:32px;
+    display:flex;
+    align-items:center;
+    gap:18px;
+    z-index:10;
+    font-family:var(--body);
+  }
+  .counter{
+    font-size:12px;
+    letter-spacing:0.08em;
+    color:var(--sky-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .navbtn{
+    width:36px;height:36px;
+    border-radius:50%;
+    border:1px solid var(--hairline);
+    background:rgba(244,248,251,0.03);
+    color:var(--ice);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    transition: background .2s ease, border-color .2s ease;
+  }
+  .navbtn:hover{ background:rgba(169,214,229,0.12); border-color:var(--sky-dim); }
+  .navbtn:focus-visible{ outline:2px solid var(--sky); outline-offset:2px; }
+  .navbtn svg{width:14px;height:14px;}
+
+  .eyebrow{
+    font-family:var(--body);
+    font-size:12px;
+    letter-spacing:0.22em;
+    text-transform:uppercase;
+    color:var(--sky);
+    margin-bottom:22px;
+  }
+
+  /* =========================================================
+     SLIDE 1 — Manchetes
+  ========================================================= */
+  #slide-headlines{ padding:0; }
+  .headlines-stage{
+    position:relative;
+    width:100%; height:100%;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .clipping{
+    position:absolute;
+    width:min(58vw, 620px);
+    background:var(--ice);
+    color:var(--navy-deep);
+    border-radius:2px;
+    box-shadow:0 30px 60px rgba(0,0,0,0.45);
+    opacity:0;
+    transform: scale(0.96) rotate(var(--r,0deg));
+    transition: opacity .5s ease, transform .6s ease;
+    padding:34px 38px;
+  }
+  .clipping.show{
+    opacity:1;
+    transform: scale(1) rotate(var(--r,0deg));
+  }
+  .clipping .kicker{
+    font-family:var(--body);
+    font-size:11px;
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+    color:var(--blue);
+    margin-bottom:10px;
+  }
+  .clipping .headline{
+    font-family:var(--display);
+    font-weight:600;
+    font-size:clamp(20px, 2.3vw, 30px);
+    line-height:1.22;
+  }
+  .clipping .source{
+    margin-top:14px;
+    font-size:11px;
+    color:#5b6b80;
+    letter-spacing:0.04em;
+  }
+
+  .thesis{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0 10vw;
+    opacity:0;
+    transition:opacity .8s ease;
+    pointer-events:none;
+  }
+  .thesis.show{ opacity:1; }
+  .thesis p{
+    font-family:var(--display);
+    font-style:italic;
+    font-weight:400;
+    font-size:clamp(28px, 4.4vw, 54px);
+    line-height:1.3;
+  }
+  .thesis .word{
+    display:inline-block;
+    opacity:0;
+    filter:blur(6px);
+    transform:translateY(6px);
+    transition: opacity .5s ease, filter .5s ease, transform .5s ease;
+  }
+  .thesis .word.in{ opacity:1; filter:blur(0); transform:translateY(0); }
+  .thesis .strike{ color:var(--sky-dim); }
+  .thesis .highlight{ color:var(--sky); }
+
+  /* =========================================================
+     SLIDE 2 — Logo reveal
+  ========================================================= */
+  .logo-wrap{ display:flex; flex-direction:column; align-items:center; gap:26px; }
+  .logo-mark{
+    width:96px; height:96px;
+    opacity:0; transform:scale(0.7);
+    transition: opacity .9s cubic-bezier(.2,.8,.2,1), transform .9s cubic-bezier(.2,.8,.2,1);
+  }
+  .slide.active .logo-mark{ opacity:1; transform:scale(1); }
+  .wordmark{
+    font-family:var(--display);
+    font-weight:300;
+    font-size:clamp(48px,8vw,96px);
+    letter-spacing:0.02em;
+    opacity:0;
+    transition: opacity 1s ease .3s;
+  }
+  .slide.active .wordmark{ opacity:1; }
+  .tagline{
+    font-family:var(--body);
+    font-size:14px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--sky-dim);
+    opacity:0;
+    transition:opacity 1s ease .6s;
+  }
+  .slide.active .tagline{ opacity:1; }
+
+  /* =========================================================
+     SLIDES 3-5 — Produto (mockup de telefone)
+  ========================================================= */
+  .product-slide{ gap:40px; }
+  .phone{
+    width:220px; height:452px;
+    border-radius:36px;
+    border:2px solid rgba(169,214,229,0.35);
+    background:var(--navy-deep);
+    padding:10px;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.03);
+    position:relative;
+  }
+  .phone::before{
+    content:"";
+    position:absolute;
+    top:10px; left:50%; transform:translateX(-50%);
+    width:60px; height:6px;
+    border-radius:6px;
+    background:rgba(169,214,229,0.3);
+  }
+  .phone-screen{
+    width:100%; height:100%;
+    border-radius:26px;
+    overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    background:#08131F;
+  }
+  .screen-placeholder{
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    color:var(--sky-dim);
+    padding:20px;
+    border:1px dashed rgba(169,214,229,0.3);
+    border-radius:16px;
+    margin:14px;
+    width:calc(100% - 28px);
+    height:calc(100% - 28px);
+    justify-content:center;
+  }
+  .screen-placeholder .play{
+    width:34px;height:34px;border-radius:50%;
+    border:1px solid var(--sky-dim);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .screen-placeholder small{ font-size:10px; letter-spacing:.05em; }
+  .product-caption{
+    font-family:var(--display);
+    font-size:clamp(22px,3vw,34px);
+    font-weight:400;
+    max-width:520px;
+  }
+  .step-tag{
+    font-family:var(--body);
+    font-size:12px;
+    letter-spacing:0.18em;
+    color:var(--sky);
+    text-transform:uppercase;
+  }
+
+  /* =========================================================
+     SLIDES 6-8 — Texto de apoio (big type)
+  ========================================================= */
+  .bigtype{
+    font-family:var(--display);
+    font-weight:400;
+    font-size:clamp(30px, 5vw, 58px);
+    line-height:1.25;
+    max-width:900px;
+  }
+  .bigtype .accent{ color:var(--sky); font-style:italic; }
+
+  /* =========================================================
+     SLIDE 9 — Demo ao vivo
+  ========================================================= */
+  .demo-slide .eyebrow{ margin-bottom:10px; }
+  .demo-title{
+    font-family:var(--display);
+    font-weight:300;
+    font-size:clamp(46px,7vw,84px);
+  }
+  .demo-pulse{
+    margin-top:34px;
+    width:10px;height:10px;border-radius:50%;
+    background:var(--sky);
+    box-shadow:0 0 0 0 rgba(169,214,229,0.6);
+    animation: pulse 1.8s infinite;
+  }
+  @keyframes pulse{
+    0%{ box-shadow:0 0 0 0 rgba(169,214,229,0.5); }
+    70%{ box-shadow:0 0 0 22px rgba(169,214,229,0); }
+    100%{ box-shadow:0 0 0 0 rgba(169,214,229,0); }
+  }
+
+  /* =========================================================
+     SLIDE 10 — Stack técnico / desafios
+  ========================================================= */
+  .stack-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(140px,1fr));
+    gap:16px;
+    max-width:760px;
+    margin-bottom:44px;
+  }
+  .stack-item{
+    border:1px solid var(--hairline);
+    border-radius:10px;
+    padding:18px 10px;
+    background:rgba(169,214,229,0.04);
+  }
+  .stack-item .name{
+    font-family:var(--body); font-weight:600; font-size:14px;
+  }
+  .stack-item .role{
+    font-family:var(--body); font-size:11px; color:var(--sky-dim); margin-top:4px;
+  }
+  .challenges{
+    max-width:640px;
+    text-align:left;
+    border-top:1px solid var(--hairline);
+    padding-top:26px;
+  }
+  .challenges .eyebrow{ text-align:left; }
+  .challenges ul{ list-style:none; display:flex; flex-direction:column; gap:10px; }
+  .challenges li{
+    font-family:var(--body); font-size:15px; color:var(--ice);
+    padding-left:18px; position:relative;
+  }
+  .challenges li::before{
+    content:"—"; position:absolute; left:0; color:var(--sky);
+  }
+
+  /* =========================================================
+     SLIDE 11 — Proposta (lista vertical)
+  ========================================================= */
+  .proposal-list {
+    display: flex;
+    flex-direction: column;
+    max-width: 680px;
+    width: 100%;
+    text-align: left;
+  }
+  .proposal-row {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .proposal-row:last-child { border-bottom: none; }
+  .proposal-row-icon {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: rgba(27,79,140,0.40);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    color: var(--sky);
+  }
+  .proposal-row-content { flex: 1; }
+  .proposal-row-title {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--ice);
+    margin-bottom: 6px;
+  }
+  .proposal-row-body {
+    font-family: var(--body);
+    font-size: 13px;
+    color: rgba(169,214,229,0.75);
+    line-height: 1.65;
+  }
+
+  /* =========================================================
+     SLIDE 11 — Stack técnico / desafios
+  ========================================================= */
+  .proposal-title{
+    font-family:var(--display);
+    font-size:clamp(30px,4.4vw,52px);
+    max-width:820px;
+    margin-bottom:20px;
+  }
+  .proposal-sub{
+    font-family:var(--body);
+    font-size:16px;
+    color:var(--sky-dim);
+    max-width:560px;
+    line-height:1.6;
+  }
+
+  /* =========================================================
+     SLIDE 13 — Timeline roadmap
+  ========================================================= */
+  .tl-wrap {
+    width: 100%;
+    max-width: 1020px;
+    margin-top: 12px;
+  }
+  .tl-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: auto 36px auto;
+  }
+  .tl-rail {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: center;
+    height: 1px;
+    background: rgba(169,214,229,0.25);
+  }
+  .tl-dot {
+    grid-row: 2;
+    align-self: center;
+    justify-self: center;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--sky);
+    border: 2px solid var(--navy);
+    outline: 1px solid var(--sky);
+    position: relative;
+    z-index: 1;
+  }
+  .tl-above {
+    grid-row: 1;
+    padding: 0 10px 18px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .tl-below {
+    grid-row: 3;
+    padding: 18px 10px 0;
+    text-align: center;
+  }
+  .tl-step {
+    font-family: var(--body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--sky);
+    text-transform: uppercase;
+    margin-bottom: 7px;
+  }
+  .tl-title {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--ice);
+    line-height: 1.3;
+    margin-bottom: 8px;
+  }
+  .tl-body {
+    font-family: var(--body);
+    font-size: 12px;
+    color: rgba(169,214,229,0.7);
+    line-height: 1.62;
+  }
+
+  /* =========================================================
+     SLIDE 12 — Próximos passos
+  ========================================================= */
+  .roadmap{
+    text-align:left;
+    max-width:560px;
+    display:flex; flex-direction:column; gap:18px;
+  }
+  .roadmap li{
+    list-style:none;
+    font-family:var(--body);
+    font-size:17px;
+    padding-left:0;
+    border-bottom:1px solid var(--hairline);
+    padding-bottom:16px;
+  }
+  .roadmap li:last-child{ border-bottom:none; }
+
+  /* =========================================================
+     SLIDE 13 — Agradecimentos
+  ========================================================= */
+  .thanks-title{
+    font-family:var(--display);
+    font-style:italic;
+    font-weight:400;
+    font-size:clamp(36px,6vw,64px);
+  }
+  .thanks-sub{
+    margin-top:18px;
+    font-family:var(--body);
+    font-size:14px;
+    letter-spacing:0.08em;
+    color:var(--sky-dim);
+  }
+
+  /* =========================================================
+     SLIDE 10 — Feature cards
+  ========================================================= */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    max-width: 960px;
+    width: 100%;
+    margin-top: 8px;
+  }
+  .feature-card {
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 28px 22px;
+    background: rgba(169,214,229,0.05);
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .feature-icon {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .fi-orange { background: rgba(247,147,26,0.15); color: #F7A429; }
+  .fi-blue   { background: rgba(27,79,140,0.45);  color: var(--sky); }
+  .fi-purple { background: rgba(150,120,220,0.18); color: #b8a8f0; }
+  .fc-title {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 17px;
+    color: var(--ice);
+    line-height: 1.25;
+  }
+  .fc-body {
+    font-family: var(--body);
+    font-size: 13px;
+    color: rgba(169,214,229,0.75);
+    line-height: 1.65;
+  }
+  .fc-body strong { color: var(--ice); font-weight: 600; }
+
+  /* ============================================================
+     Clippings com screenshots reais de manchetes
+  ============================================================ */
+  .clip-masthead {
+    border-top: 2px solid var(--navy-deep);
+    border-bottom: 1px solid var(--navy-deep);
+    padding: 3px 0 5px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .clip-paper {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--blue);
+  }
+  .clip-sep { font-size: 10px; color: #bbb; }
+  .clip-date { font-size: 9px; color: #999; margin-left: auto; }
+  .clipping.has-imgs { padding: 22px 28px; }
+  .clip-imgs-row {
+    display: grid;
+    gap: 4px;
+    margin: 8px 0 4px;
+  }
+  .clip-imgs-row.col-1 { grid-template-columns: 1fr; }
+  .clip-imgs-row.col-2 { grid-template-columns: 1fr 1fr; }
+  .clip-imgs-row.col-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .clip-imgs-row img {
+    width: 100%;
+    display: block;
+    border-radius: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation:none !important; transition:none !important; }
+  }
+
+  @media (max-width: 640px){
+    .stack-grid{ grid-template-columns:repeat(2,1fr); }
+    .feature-grid{ grid-template-columns:1fr; }
+    .phone{ width:170px; height:350px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="brandmark" id="brandmark">
+  <svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" fill="#A9D6E5"/></svg>
+  <span>SATRA</span>
+</div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 — MANCHETES -->
+  <section class="slide" id="slide-headlines">
+    <div class="headlines-stage">
+      <!-- Substitua o conteúdo interno de cada .clipping por <img src="headline-N.jpg">, mantendo a classe -->
+      <div class="clipping has-imgs" style="--r:-2deg;">
+        <div class="clip-masthead">
+          <span class="clip-paper">Fantástico · G1</span>
+          <span class="clip-sep">—</span>
+          <span class="clip-date">ago. 2023</span>
+        </div>
+        <div class="headline">Larissa Manoela não tinha conta bancária em seu nome — pais controlavam tudo</div>
+        <div class="clip-imgs-row col-2">
+          <img src="recursos/larissa_05.jpeg" alt="Larissa Manoela — Fantástico">
+          <img src="recursos/larissa_06.jpeg" alt="Larissa Manoela — Fantástico">
+        </div>
+        <div class="clip-imgs-row col-3">
+          <img src="recursos/larissa_01.jpeg" alt="">
+          <img src="recursos/larissa_02.jpeg" alt="">
+          <img src="recursos/larissa_03.jpeg" alt="">
+        </div>
+        <div class="source">G1 · Fantástico, agosto de 2023</div>
+      </div>
+      <div class="clipping has-imgs" style="--r:1.5deg;">
+        <div class="clip-masthead">
+          <span class="clip-paper">JH · G1 · Fantástico</span>
+          <span class="clip-sep">—</span>
+          <span class="clip-date">nov.–dez. 2023</span>
+        </div>
+        <div class="headline">Naiara Azevedo denuncia ex-marido por violência patrimonial e controle do próprio dinheiro</div>
+        <div class="clip-imgs-row col-1">
+          <img src="recursos/naiara_01.jpeg" alt="Naiara Azevedo — JH">
+        </div>
+        <div class="clip-imgs-row col-2">
+          <img src="recursos/naiara_02.jpeg" alt="">
+          <img src="recursos/naiara_03.jpeg" alt="">
+        </div>
+        <div class="clip-imgs-row col-1">
+          <img src="recursos/naiara_04.jpeg" alt="">
+        </div>
+        <div class="source">JH Regional · G1 · Fantástico, nov.–dez. 2023</div>
+      </div>
+      <div class="clipping has-imgs" style="--r:-1.5deg;">
+        <div class="clip-masthead">
+          <span class="clip-paper">Isto É Dinheiro · Pop</span>
+          <span class="clip-sep">—</span>
+          <span class="clip-date">fev. 2025</span>
+        </div>
+        <div class="headline">Tutela controlada pelo pai impediu Britney Spears de acessar o próprio dinheiro por 13 anos</div>
+        <div class="clip-imgs-row col-1">
+          <img src="recursos/britney_01.jpeg" alt="Britney Spears">
+          <img src="recursos/britney_02.jpeg" alt="">
+        </div>
+        <div class="source">Isto É Dinheiro · g1.globo.com, fevereiro de 2025</div>
+      </div>
+
+      <div class="thesis" id="thesis">
+        <p id="thesis-text"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 — LOGO -->
+  <section class="slide" id="slide-logo">
+    <div class="logo-wrap">
+      <svg class="logo-mark" viewBox="0 0 96 96" fill="none">
+        <circle cx="48" cy="48" r="47" stroke="#1B4F8C" stroke-width="1.4" opacity="0.5"/>
+        <path d="M54 16 26 54h20l-4 26 30-38H52l2-26Z" fill="#1B4F8C"/>
+      </svg>
+      <div class="wordmark">Satra</div>
+      <div class="tagline">uma calculadora por fora</div>
+    </div>
+  </section>
+
+  <!-- 3 — PRODUTO: calculadora -->
+  <section class="slide product-slide" id="slide-prod-1">
+    <div class="enter">
+      <div class="step-tag" style="margin-bottom:14px;">Por fora</div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="screen-placeholder">
+            <div class="play">▶</div>
+            <span>Vídeo: calculadora.mp4</span>
+            <small>calculadora funcionando de verdade</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="product-caption enter" style="margin-top:32px;">Uma calculadora de verdade — pra quem olha por cima do ombro.</p>
+  </section>
+
+  <!-- 4 — PRODUTO: PIN -->
+  <section class="slide product-slide" id="slide-prod-2">
+    <div class="enter">
+      <div class="step-tag" style="margin-bottom:14px;">A chave</div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="screen-placeholder">
+            <div class="play">▶</div>
+            <span>Vídeo: digitando-pin.mp4</span>
+            <small>uma sequência que só ela sabe</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="product-caption enter" style="margin-top:32px;">Um PIN que ninguém suspeita que existe.</p>
+  </section>
+
+  <!-- 5 — PRODUTO: wallet -->
+  <section class="slide product-slide" id="slide-prod-3">
+    <div class="enter">
+      <div class="step-tag" style="margin-bottom:14px;">Por dentro</div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="screen-placeholder">
+            <div class="play">▶</div>
+            <span>Vídeo: entrando-satra.mp4</span>
+            <small>a carteira aparece</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="product-caption enter" style="margin-top:32px;">E, por dentro, uma reserva que é só dela.</p>
+  </section>
+
+  <!-- 6 — TEXTO DE APOIO 1 -->
+  <section class="slide" id="slide-text-1">
+    <p class="bigtype enter">A liberdade que existe em sil&ecirc;ncio &mdash; at&eacute; o momento em que <span class="accent">voc&ecirc; precisar.</span></p>
+  </section>
+
+  <!-- 7 — TEXTO DE APOIO 2 -->
+  <section class="slide" id="slide-text-2">
+    <p class="bigtype enter">[TEXTO 2 — <span class="accent">visibilidade social zero</span> como diferencial]</p>
+  </section>
+
+  <!-- 8 — TEXTO DE APOIO 3 -->
+  <section class="slide" id="slide-text-3">
+    <p class="bigtype enter">[TEXTO 3 — como funciona o escape]</p>
+  </section>
+
+  <!-- 9 — DEMO AO VIVO -->
+  <section class="slide demo-slide" id="slide-demo">
+    <div class="enter">
+      <div class="eyebrow">Ao vivo</div>
+      <div class="demo-title">Demo</div>
+      <div class="demo-pulse" style="margin-left:auto;margin-right:auto;"></div>
+    </div>
+  </section>
+
+  <!-- 10 — STACK / DESAFIOS -->
+  <section class="slide" id="slide-stack">
+    <div class="enter" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+      <div class="eyebrow">Stack e Desafios T&eacute;cnicos</div>
+      <div class="feature-grid">
+
+        <!-- Card 1: Lightning -->
+        <div class="feature-card">
+          <div class="feature-icon fi-orange">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+          </div>
+          <div class="fc-title">Infraestrutura Lightning</div>
+          <div class="fc-body">
+            Desenvolvido em Flutter com integra&ccedil;&atilde;o nativa via <strong>Breez SDK (Spark)</strong>. O aplicativo &eacute; a pr&oacute;pria carteira ponta a ponta, sem depender de NWC ou servi&ccedil;os externos rodando, garantindo m&aacute;xima soberania.
+          </div>
+        </div>
+
+        <!-- Card 2: Nostr -->
+        <div class="feature-card">
+          <div class="feature-icon fi-blue">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1.5 8.5a15 15 0 0 1 21 0M5 12a11 11 0 0 1 14 0M8.5 15.5a7 7 0 0 1 7 0M12 19h.01"/></svg>
+          </div>
+          <div class="fc-title">Rede Nostr de Socorro</div>
+          <div class="fc-body">
+            Identidade Nostr derivada da mesma seed da carteira (<strong>NIP-06</strong>). Alertas de emerg&ecirc;ncia s&atilde;o enviados como DMs criptografadas via <strong>NIP-17</strong> (protegendo metadados) e contatos seguros sincronizados globalmente via <strong>NIP-44</strong>.
+          </div>
+        </div>
+
+        <!-- Card 3: Crypto + NFC -->
+        <div class="feature-card">
+          <div class="feature-icon fi-purple">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9z"/><path d="M3 9h2M3 12h2M3 15h2M19 9h2M19 12h2M19 15h2M9 3v2M12 3v2M15 3v2M9 19v2M12 19v2M15 19v2"/></svg>
+          </div>
+          <div class="fc-title">Criptografia e NFC</div>
+          <div class="fc-body">
+            A chave f&iacute;sica utiliza chips NTAG regrav&aacute;veis. Nenhuma seed &eacute; salva em texto. Todo envelope &eacute; criptografado via <strong>Argon2id + AES-256-GCM</strong>, e o app executa valida&ccedil;&atilde;o ass&iacute;ncrona para garantir a correta grava&ccedil;&atilde;o.
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 — PROPOSTA DETALHE -->
+  <section class="slide" id="slide-proposal-detail">
+    <div class="enter">
+      <div class="eyebrow">Nossa Vis&atilde;o</div>
+      <p class="bigtype">N&atilde;o &eacute; sobre criptografia mais forte.<br>&Eacute; sobre <span class="accent">nunca levantar suspeita.</span></p>
+      <p style="margin-top:28px; font-family:var(--body); font-size:16px; color:var(--sky-dim); max-width:560px; line-height:1.65; text-align:center;">O Satra protege contra quem vasculha o celular &mdash; n&atilde;o contra um hacker. Uma reserva financeira que existe sem nunca parecer existir.</p>
+    </div>
+  </section>
+
+  <!-- 12 — PROPOSTA -->
+  <section class="slide" id="slide-proposal">
+    <div class="enter" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+      <div class="eyebrow">A Proposta da Satra</div>
+      <div class="proposal-list">
+
+        <div class="proposal-row">
+          <div class="proposal-row-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          </div>
+          <div class="proposal-row-content">
+            <div class="proposal-row-title">Invisibilidade Social como Prioridade</div>
+            <div class="proposal-row-body">O design compreende que o agressor tem acesso f&iacute;sico e livre ao aparelho celular da v&iacute;tima, focando em passar totalmente despercebido.</div>
+          </div>
+        </div>
+
+        <div class="proposal-row">
+          <div class="proposal-row-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div class="proposal-row-content">
+            <div class="proposal-row-title">Autonomia e Controle Real</div>
+            <div class="proposal-row-body">Devolve o poder financeiro para mulheres que t&ecirc;m suas rendas confiscadas, sem necessidade de aprova&ccedil;&atilde;o de bancos ou extratos vis&iacute;veis.</div>
+          </div>
+        </div>
+
+        <div class="proposal-row">
+          <div class="proposal-row-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div class="proposal-row-content">
+            <div class="proposal-row-title">Rede de Apoio Integrada</div>
+            <div class="proposal-row-body">N&atilde;o &eacute; apenas dinheiro, &eacute; uma ferramenta de sa&iacute;da. O mecanismo de emerg&ecirc;ncia une prote&ccedil;&atilde;o patrimonial a um pedido silencioso e instant&acirc;neo de ajuda.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 — PRÓXIMOS PASSOS (timeline) -->
+  <section class="slide" id="slide-roadmap">
+    <div class="enter" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+      <div class="eyebrow">O Futuro da Satra</div>
+      <div class="tl-wrap">
+        <div class="tl-grid">
+
+          <!-- linha horizontal -->
+          <div class="tl-rail"></div>
+
+          <!-- 1: abaixo -->
+          <div class="tl-dot" style="grid-column:1;"></div>
+          <div class="tl-below" style="grid-column:1;">
+            <div class="tl-step">1.</div>
+            <div class="tl-title">Valida&ccedil;&atilde;o MVP</div>
+            <div class="tl-body">Fechamento do ciclo no Hackathon, estabiliza&ccedil;&atilde;o dos fluxos de NFC e testes reais de usabilidade com a calculadora.</div>
+          </div>
+
+          <!-- 2: acima -->
+          <div class="tl-above" style="grid-column:2;">
+            <div class="tl-step">2.</div>
+            <div class="tl-title">Heran&ccedil;a Criptogr&aacute;fica</div>
+            <div class="tl-body">Implementa&ccedil;&atilde;o de libera&ccedil;&atilde;o autom&aacute;tica dos dados de acesso para herdeiros programados via Nostr em caso de inatividade prolongada.</div>
+          </div>
+          <div class="tl-dot" style="grid-column:2;"></div>
+
+          <!-- 3: abaixo -->
+          <div class="tl-dot" style="grid-column:3;"></div>
+          <div class="tl-below" style="grid-column:3;">
+            <div class="tl-step">3.</div>
+            <div class="tl-title">Auditoria Local</div>
+            <div class="tl-body">Foco intenso em seguran&ccedil;a forense mobile para garantir que vest&iacute;gios de uso de mem&oacute;ria ou bateria n&atilde;o entreguem o disfarce.</div>
+          </div>
+
+          <!-- 4: acima -->
+          <div class="tl-above" style="grid-column:4;">
+            <div class="tl-step">4.</div>
+            <div class="tl-title">Distribui&ccedil;&atilde;o F-Droid</div>
+            <div class="tl-body">Lan&ccedil;amento em lojas de aplicativos open source (F-Droid) e distribui&ccedil;&atilde;o descentralizada para mitigar bloqueios nas app stores padr&atilde;o.</div>
+          </div>
+          <div class="tl-dot" style="grid-column:4;"></div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 — AGRADECIMENTOS -->
+  <section class="slide" id="slide-thanks">
+    <div class="enter">
+      <svg class="logo-mark" style="opacity:1; transform:none; margin-bottom:22px;" viewBox="0 0 96 96" fill="none">
+        <path d="M54 16 26 54h20l-4 26 30-38H52l2-26Z" fill="#1B4F8C"/>
+      </svg>
+      <div class="thanks-title">Obrigada.</div>
+      <div class="thanks-sub">SATRA WALLET · HACK4FREEDOM 2026</div>
+    </div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button class="navbtn" id="prevBtn" aria-label="Slide anterior">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <span class="counter" id="counter">01 / 13</span>
+  <button class="navbtn" id="nextBtn" aria-label="Próximo slide">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+  </button>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total = slides.length;
+  const counter = document.getElementById('counter');
+  const brandmark = document.getElementById('brandmark');
+  let current = 0;
+  let headlineTimers = [];
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+
+  function showSlide(index){
+    slides.forEach((s,i) => {
+      s.classList.remove('visible','active');
+    });
+    clearTimeout(window.__activeTimer);
+
+    const s = slides[index];
+    s.classList.add('visible');
+    // next frame, trigger enter transition
+    requestAnimationFrame(() => requestAnimationFrame(() => s.classList.add('active')));
+
+    counter.textContent = pad(index+1) + ' / ' + pad(total);
+    brandmark.classList.toggle('show', index > 0);
+
+    if(s.id === 'slide-headlines'){ playHeadlines(); } else { resetHeadlines(); }
+  }
+
+  function resetHeadlines(){
+    headlineTimers.forEach(t => clearTimeout(t));
+    headlineTimers = [];
+    document.querySelectorAll('.clipping').forEach(c => c.classList.remove('show'));
+    const thesis = document.getElementById('thesis');
+    thesis.classList.remove('show');
+    document.getElementById('thesis-text').innerHTML = '';
+  }
+
+  function playHeadlines(){
+    resetHeadlines();
+    const clippings = document.querySelectorAll('.clipping');
+    const stepMs = 1600;
+
+    clippings.forEach((c, i) => {
+      headlineTimers.push(setTimeout(() => {
+        clippings.forEach(o => o.classList.remove('show'));
+        c.classList.add('show');
+      }, i * stepMs));
+    });
+
+    const afterHeadlines = clippings.length * stepMs + 400;
+    headlineTimers.push(setTimeout(() => {
+      clippings.forEach(o => o.classList.remove('show'));
+      typeThesis();
+    }, afterHeadlines));
+  }
+
+  function typeThesis(){
+    const thesis = document.getElementById('thesis');
+    const target = document.getElementById('thesis-text');
+    const parts = [
+      {t:'O problema não é', cls:''},
+      {t:'falta de dinheiro', cls:'strike'},
+      {t:',', cls:''},
+      {t:'é falta de', cls:''},
+      {t:'controle', cls:'highlight'},
+      {t:'sobre o próprio dinheiro.', cls:''},
+    ];
+    target.innerHTML = '';
+    const words = [];
+    parts.forEach(p => {
+      p.t.split(' ').forEach(w => words.push({w, cls:p.cls}));
+    });
+    words.forEach(({w,cls}) => {
+      const span = document.createElement('span');
+      span.className = 'word' + (cls ? ' ' + cls : '');
+      span.textContent = w + '\u00A0';
+      target.appendChild(span);
+    });
+    thesis.classList.add('show');
+    const wordEls = target.querySelectorAll('.word');
+    wordEls.forEach((el, i) => {
+      headlineTimers.push(setTimeout(() => el.classList.add('in'), i * 90));
+    });
+  }
+
+  function next(){ if(current < total-1){ current++; showSlide(current); } }
+  function prev(){ if(current > 0){ current--; showSlide(current); } }
+
+  document.getElementById('nextBtn').addEventListener('click', next);
+  document.getElementById('prevBtn').addEventListener('click', prev);
+
+  window.addEventListener('keydown', (e) => {
+    if(['ArrowRight',' ','PageDown'].includes(e.key)){ e.preventDefault(); next(); }
+    if(['ArrowLeft','PageUp'].includes(e.key)){ e.preventDefault(); prev(); }
+  });
+
+  showSlide(0);
+</script>
+
+</body>
+</html>
