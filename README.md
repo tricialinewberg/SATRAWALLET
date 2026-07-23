@@ -4,9 +4,19 @@ Satra é um aplicativo de celular disfarçado de calculadora nativa do sistema. 
 # O Problema
 Controle financeiro é uma forma comum e pouco discutida de abuso doméstico. Agressores costumam monitorar extratos bancários, cartões, Pix e apps financeiros no celular da vítima. O desafio não é "segurança contra hackers", é invisibilidade social: o adversário tem acesso físico direto ao celular.
 
-# Público
-Mulheres em situação de violência doméstica, ainda convivendo com o agressor;
-Mulheres em processo de planejamento de saída de uma relação abusiva;
+## Público
+
+O Satra é pra qualquer mulher cujo dinheiro é controlado por outra pessoa — marido, companheiro, pai, ou qualquer figura de poder na relação.
+
+Isso inclui:
+
+- Mulheres em situação de violência doméstica que ainda convivem com o agressor
+- Mulheres que **trabalham e geram sua própria renda**, mas não têm acesso real a ela — o parceiro controla salário, extrato, cartão ou decide como e quando o dinheiro pode ser gasto
+- Mulheres que dependem de benefícios (como o Bolsa Família) e precisam esconder o recebimento de um companheiro controlador
+- Pessoas planejando a saída de uma relação abusiva, que precisam de uma reserva financeira invisível pra viabilizar esse plano
+- Rede de apoio (familiares, ONGs, assistentes sociais) que atuam com essas mulheres
+
+O ponto em comum não é ausência de **autonomia** sobre a própria renda.
 
 # Fluxo de uso completo:
 ### Onboarding (primeiro acesso)
