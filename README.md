@@ -63,6 +63,21 @@ Nostr – canal de socorro: alerta de escape enviado via DM criptografada usando
 Rede de confiança: sincronizada entre dispositivos via evento criptografado (NIP-44) publicado nos relays, não fica presa só ao armazenamento local do celular. Backup do cofre de contatos sincronizado e criptografado em relays via NIP-78.
 
 NFC: chip NTAG regravável, guardando um envelope criptografado (Argon2id + AES-256-GCM) com a credencial de acesso – nunca a seed em texto puro. Escrita verificada com um ciclo de escrever → reler → validar antes de confirmar sucesso.
+
+## Apresentação do projeto
+
+A apresentação do pitch está disponível em:
+- **Local:** `apresentacao/satra-pitch.html`
+- **Como acessar:** Baixe todos os arquivos do repositório e abra `satra-pitch.html` em um navegador web
+- **Link online:** Disponível via GitHub Pages ou jsDelivr (veja configuração do repositório)
+
+
+## SDK e Recursos
+
+Acesse os arquivos do SDK e recursos para testes:
+- **[hack4freedom — SDK e Arquivos de Teste](https://1drv.ms/f/c/6e39028b5e01813a/IgCpXdsSQWASSb-gXhyG_1b6AbBm0f2hOFVWzP_zXTvsCSU)**
+  - Contém APK, basta baixar e testar as funcionalides do app!
+  
 # Identidade Visual
 ### Nome
 Satra (Satra Wallet): nome curto, sonoro, com raiz derivada de "sats" (unidade do bitcoin).
@@ -153,16 +168,3 @@ flutter run
 flutter build apk --release
 ```
 
-## Apresentação do projeto
-
-A apresentação do pitch está disponível em:
-- **Local:** `apresentacao/satra-pitch.html`
-- **Como acessar:** Baixe todos os arquivos do repositório e abra `satra-pitch.html` em um navegador web
-- **Link online:** Disponível via GitHub Pages ou jsDelivr (veja configuração do repositório)
-
-
-## SDK e Recursos
-
-Acesse os arquivos do SDK e recursos para testes:
-- **[hack4freedom — SDK e Arquivos de Teste](https://1drv.ms/f/c/6e39028b5e01813a/IgCpXdsSQWASSb-gXhyG_1b6AbBm0f2hOFVWzP_zXTvsCSU)**
-  - Contém APK, protótipos de vídeo, imagens de interface e recursos para desenvolvimento
