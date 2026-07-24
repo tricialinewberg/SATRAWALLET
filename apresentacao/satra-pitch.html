@@ -200,10 +200,11 @@
     font-style: normal;
     font-weight: 900;
     font-size: 1.24em;
-    background: rgba(247,147,26,0.15);
+    background: rgba(247,147,26,0.35);
     padding: 4px 12px;
     border-radius: 6px;
     letter-spacing: 0.02em;
+    box-shadow: 0 0 16px rgba(247,147,26,0.25);
   }
 
   /* =========================================================
@@ -309,6 +310,15 @@
   .prod-text-col {
     text-align: left;
     max-width: 380px;
+  }
+  .phones-grid {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .phones-grid .phone {
+    flex-shrink: 0;
   }
 
   /* =========================================================
@@ -448,7 +458,7 @@
   .proposal-sub{
     font-family:var(--body);
     font-size:16px;
-    color:var(--sky-dim);
+    color:rgba(169,214,229,0.88);
     max-width:560px;
     line-height:1.6;
   }
@@ -531,7 +541,7 @@
   .tl-body {
     font-family: var(--body);
     font-size: 13px;
-    color: rgba(169,214,229,0.7);
+    color: rgba(169,214,229,0.88);
     line-height: 1.62;
     transition: color 0.22s ease;
   }
@@ -664,7 +674,7 @@
   .fc-body {
     font-family: var(--body);
     font-size: 13px;
-    color: rgba(169,214,229,0.75);
+    color: rgba(169,214,229,0.88);
     line-height: 1.65;
   }
   .fc-body strong { color: var(--ice); font-weight: 600; }
@@ -799,11 +809,7 @@
         <div class="step-tag">Por fora</div>
         <div class="phone">
           <div class="phone-screen">
-            <div class="screen-placeholder">
-              <div class="play">▶</div>
-              <span>Vídeo: calculadora.mp4</span>
-              <small>calculadora funcionando de verdade</small>
-            </div>
+            <video src="recursos/prototipo/calculadora.mp4" autoplay muted loop playsinline style="width:100%; height:100%; border-radius:26px; object-fit:cover;"></video>
           </div>
         </div>
       </div>
@@ -813,20 +819,28 @@
 
   <!-- 4 — PRODUTO: PIN -->
   <section class="slide product-slide" id="slide-prod-2">
-    <div class="prod-row enter">
-      <div class="prod-phone-col">
-        <div class="step-tag">A chave</div>
+    <div class="enter" style="width:100%; display:flex; flex-direction:column; align-items:center; gap:30px;">
+      <div style="text-align: center;">
+        <div class="step-tag">Primeiros Passos</div>
+        <p class="product-caption">Configuração do PIN único.</p>
+      </div>
+      <div class="phones-grid">
         <div class="phone">
           <div class="phone-screen">
-            <div class="screen-placeholder">
-              <div class="play">▶</div>
-              <span>Vídeo: digitando-pin.mp4</span>
-              <small>uma sequência que só ela sabe</small>
-            </div>
+            <img src="recursos/prototipo/primeiros_passos_1.jpg" alt="Passo 1" style="width:100%; height:100%; border-radius:26px; object-fit:contain; padding:8px;">
+          </div>
+        </div>
+        <div class="phone">
+          <div class="phone-screen">
+            <img src="recursos/prototipo/primeiros_passos_2.jpg" alt="Passo 2" style="width:100%; height:100%; border-radius:26px; object-fit:contain; padding:8px;">
+          </div>
+        </div>
+        <div class="phone">
+          <div class="phone-screen">
+            <img src="recursos/prototipo/primeiros_passos_3.jpg" alt="Passo 3" style="width:100%; height:100%; border-radius:26px; object-fit:contain; padding:8px;">
           </div>
         </div>
       </div>
-      <p class="product-caption prod-text-col">Um PIN único para acesso da carteira.</p>
     </div>
   </section>
 
