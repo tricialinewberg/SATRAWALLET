@@ -17,15 +17,20 @@ class ReceiveScreen extends StatefulWidget {
 
 class _ReceiveScreenState extends State<ReceiveScreen> {
   late final Future<String> _addressFuture;
+  late final Future<String> _bitcoinAddressFuture;
   String? _fixedInvoice;
   int? _fixedInvoiceAmount;
   bool _generatingInvoice = false;
+  bool _receiveOnchain = false;
 
   @override
   void initState() {
     super.initState();
     _addressFuture = BreezService.instance.initialize().then(
           (_) => BreezService.instance.getLightningAddress(),
+        );
+    _bitcoinAddressFuture = BreezService.instance.initialize().then(
+          (_) => BreezService.instance.getBitcoinAddress(),
         );
   }
 
@@ -113,17 +118,47 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                     child: Text(
                       'Receber',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: SatraColors.navy),
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: SatraColors.navy),
                     ),
                   ),
                   const SizedBox(width: 48),
                 ],
               ),
               const SizedBox(height: 12),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(
+                    value: false,
+                    icon: Icon(Icons.bolt),
+                    label: Text('Lightning'),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    icon: Icon(Icons.currency_bitcoin),
+                    label: Text('Bitcoin'),
+                  ),
+                ],
+                selected: {_receiveOnchain},
+                onSelectionChanged: (selection) {
+                  setState(() {
+                    _receiveOnchain = selection.first;
+                    if (_receiveOnchain) {
+                      _fixedInvoice = null;
+                      _fixedInvoiceAmount = null;
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
               Expanded(
                 child: SingleChildScrollView(
                   child: FutureBuilder<String>(
-                    future: _addressFuture,
+                    future: _receiveOnchain
+                        ? _bitcoinAddressFuture
+                        : _addressFuture,
                     builder: (context, snapshot) {
                       if (snapshot.connectionState != ConnectionState.done) {
                         return const Padding(
@@ -143,7 +178,9 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                       }
 
                       final address = snapshot.data!;
-                      final qrData = _fixedInvoice ?? address;
+                      final qrData = _receiveOnchain
+                          ? address
+                          : (_fixedInvoice ?? address);
 
                       return Column(
                         children: [
@@ -157,12 +194,14 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                                 border: Border.all(color: SatraColors.light),
                               ),
                               child: _generatingInvoice
-                                  ? const Center(child: CircularProgressIndicator())
-                                  : QrImageView(data: qrData, version: QrVersions.auto),
+                                  ? const Center(
+                                      child: CircularProgressIndicator())
+                                  : QrImageView(
+                                      data: qrData, version: QrVersions.auto),
                             ),
                           ),
                           const SizedBox(height: 20),
-                          if (_fixedInvoice != null) ...[
+                          if (!_receiveOnchain && _fixedInvoice != null) ...[
                             Text(
                               'FATURA DE ${_fixedInvoiceAmount ?? ''} SATS',
                               textAlign: TextAlign.center,
@@ -177,7 +216,8 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                             GestureDetector(
                               onTap: () => _copyToClipboard(_fixedInvoice!),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
                                 decoration: BoxDecoration(
                                   color: SatraColors.background,
                                   borderRadius: BorderRadius.circular(20),
@@ -186,9 +226,13 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                                 child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text('copiar fatura', style: TextStyle(fontWeight: FontWeight.bold, color: SatraColors.navy)),
+                                    Text('copiar fatura',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: SatraColors.navy)),
                                     SizedBox(width: 8),
-                                    Icon(Icons.copy_outlined, size: 16, color: SatraColors.navy),
+                                    Icon(Icons.copy_outlined,
+                                        size: 16, color: SatraColors.navy),
                                   ],
                                 ),
                               ),
@@ -196,61 +240,101 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                             const SizedBox(height: 12),
                             TextButton(
                               onPressed: _clearFixedInvoice,
-                              child: const Text('Voltar para o endereço Lightning'),
+                              child: const Text(
+                                  'Voltar para o endereço Lightning'),
                             ),
                           ] else ...[
-                            const Text(
-                              'ENDEREÇO LIGHTNING',
+                            Text(
+                              _receiveOnchain
+                                  ? 'ENDEREÇO BITCOIN ON-CHAIN'
+                                  : 'ENDEREÇO LIGHTNING',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: SatraColors.medium, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5),
+                              style: const TextStyle(
+                                  color: SatraColors.medium,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  letterSpacing: 0.5),
                             ),
                             const SizedBox(height: 8),
                             GestureDetector(
                               onTap: () => _copyToClipboard(address),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
                                 decoration: BoxDecoration(
                                   color: SatraColors.background,
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(color: SatraColors.light),
                                 ),
                                 child: Row(
-                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(address, style: const TextStyle(fontWeight: FontWeight.bold, color: SatraColors.navy)),
+                                    Expanded(
+                                      child: Text(
+                                        address,
+                                        softWrap: true,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: SatraColors.navy),
+                                      ),
+                                    ),
                                     const SizedBox(width: 8),
-                                    const Icon(Icons.copy_outlined, size: 16, color: SatraColors.navy),
+                                    const Icon(Icons.copy_outlined,
+                                        size: 16, color: SatraColors.navy),
                                   ],
                                 ),
                               ),
                             ),
+                            if (_receiveOnchain) ...[
+                              const SizedBox(height: 10),
+                              const Text(
+                                'Recebimentos on-chain aguardam 3 confirmações '
+                                'antes da reivindicação.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: SatraColors.medium,
+                                  fontSize: 12,
+                                  height: 1.35,
+                                ),
+                              ),
+                              if (BreezService
+                                      .instance.lastBitcoinReceiveFeeSats !=
+                                  null)
+                                Text(
+                                  'Taxa informada pela Breez: '
+                                  '${BreezService.instance.lastBitcoinReceiveFeeSats} sats.',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: SatraColors.medium,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
                           ],
                           const SizedBox(height: 24),
-                          SizedBox(
-                            height: 52,
-                            child: OutlinedButton.icon(
-                              onPressed: _generatingInvoice ? null : _promptForAmount,
-                              icon: const Icon(Icons.add, color: SatraColors.navy),
-                              label: const Text('Adicionar valor', style: TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w600)),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: SatraColors.navy),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                          if (!_receiveOnchain)
+                            SizedBox(
+                              height: 52,
+                              child: OutlinedButton.icon(
+                                onPressed: _generatingInvoice
+                                    ? null
+                                    : _promptForAmount,
+                                icon: const Icon(Icons.add,
+                                    color: SatraColors.navy),
+                                label: const Text('Adicionar valor',
+                                    style: TextStyle(
+                                        color: SatraColors.navy,
+                                        fontWeight: FontWeight.w600)),
+                                style: OutlinedButton.styleFrom(
+                                  side:
+                                      const BorderSide(color: SatraColors.navy),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(26)),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            height: 52,
-                            child: OutlinedButton.icon(
-                              onPressed: () {},
-                              icon: const Icon(Icons.share_outlined, color: SatraColors.navy),
-                              label: const Text('Compartilhar QR Code', style: TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w600)),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: SatraColors.light),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-                              ),
-                            ),
-                          ),
                         ],
                       );
                     },

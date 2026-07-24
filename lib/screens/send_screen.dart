@@ -36,9 +36,11 @@ class _SendScreenState extends State<SendScreen> {
   bool _sending = false;
 
   Timer? _parseDebounce;
+  StreamSubscription<Map<String, double>>? _fiatRatesSubscription;
   bool _parsing = false;
   InputType? _parsedInput;
   String? _parseError;
+  bool _sendOnchain = false;
   String _fiatCode = 'BRL';
   int? _balanceSats;
   bool _inputInSats = true;
@@ -48,12 +50,16 @@ class _SendScreenState extends State<SendScreen> {
     super.initState();
     _destinationController.addListener(_onDestinationChanged);
     _amountController.addListener(_onAmountChanged);
+    _fiatRatesSubscription = BreezService.instance.fiatRatesStream.listen((_) {
+      if (mounted) setState(() {});
+    });
     _loadWalletDisplay();
   }
 
   @override
   void dispose() {
     _parseDebounce?.cancel();
+    _fiatRatesSubscription?.cancel();
     _destinationController.removeListener(_onDestinationChanged);
     _amountController.removeListener(_onAmountChanged);
     _destinationController.dispose();
@@ -78,14 +84,33 @@ class _SendScreenState extends State<SendScreen> {
   void _onAmountChanged() => setState(() {});
 
   Future<void> _loadWalletDisplay() async {
-    final code = await BreezService.instance.getSelectedFiatCurrency();
-    final balance = BreezService.instance.cachedBalanceSats ??
-        await BreezService.instance.getBalance();
-    if (!mounted) return;
-    setState(() {
-      _fiatCode = _fiatCurrencies.containsKey(code) ? code : 'BRL';
-      _balanceSats = balance;
-    });
+    try {
+      final code = await BreezService.instance.getSelectedFiatCurrency();
+      // Match the pattern in parseInput/preparePayment: ensure the wallet is
+      // connected before reading the balance. If the connection failed on the
+      // home screen (where the privacy-hidden state masks the error), getBalance
+      // would otherwise throw an unhandled StateError out of _requireSdk.
+      await BreezService.instance.initialize();
+      final balance = BreezService.instance.cachedBalanceSats ??
+          await BreezService.instance.getBalance();
+      if (BreezService.instance.cachedFiatRate(code) == null) {
+        try {
+          await BreezService.instance.refreshFiatRates();
+        } catch (_) {
+          // The balance remains usable even when the optional fiat feed is
+          // temporarily unavailable.
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _fiatCode = _fiatCurrencies.containsKey(code) ? code : 'BRL';
+        _balanceSats = balance;
+      });
+    } catch (_) {
+      // A failed connection just means the "Saldo: —" placeholder stays —
+      // the real error surfaces when the user actually tries to send.
+      if (mounted) setState(() => _balanceSats = null);
+    }
   }
 
   Future<void> _parseDestination(String text) async {
@@ -131,6 +156,28 @@ class _SendScreenState extends State<SendScreen> {
         InputType_Bip21() => 'Bitcoin (URI de pagamento)',
         _ => 'Destino reconhecido',
       };
+
+  static bool _isOnchainDestination(InputType parsed) => switch (parsed) {
+        InputType_BitcoinAddress() || InputType_Bip21() => true,
+        _ => false,
+      };
+
+  bool _destinationMatchesSelectedNetwork(InputType parsed) =>
+      _isOnchainDestination(parsed) == _sendOnchain;
+
+  void _selectPaymentNetwork(bool sendOnchain) {
+    if (_sendOnchain == sendOnchain) return;
+    setState(() {
+      _sendOnchain = sendOnchain;
+      _parsedInput = null;
+      _parseError = null;
+    });
+    final destination = _destinationController.text.trim();
+    if (destination.isNotEmpty) {
+      _parseDebounce?.cancel();
+      _parseDestination(destination);
+    }
+  }
 
   /// Min/max sendable, in sats, for LNURL-style destinations — null if not
   /// applicable or not known.
@@ -248,8 +295,7 @@ class _SendScreenState extends State<SendScreen> {
           children: [
             Icon(
               success ? Icons.check_circle : Icons.error_outline,
-              color:
-                  success ? const Color(0xFF3FBF6F) : const Color(0xFFD64545),
+              color: success ? SatraColors.success : SatraColors.error,
             ),
             const SizedBox(width: 10),
             Expanded(child: Text(title)),
@@ -278,6 +324,18 @@ class _SendScreenState extends State<SendScreen> {
     }
 
     final parsed = _parsedInput;
+    if (parsed != null && !_destinationMatchesSelectedNetwork(parsed)) {
+      await _showResultDialog(
+        success: false,
+        title: _sendOnchain
+            ? 'Este destino não é on-chain'
+            : 'Este é um endereço on-chain',
+        message: _sendOnchain
+            ? 'Selecione Lightning ou informe um endereço Bitcoin on-chain.'
+            : 'Selecione Bitcoin para enviar para esse endereço.',
+      );
+      return;
+    }
     final fixedAmount = parsed != null ? _fixedAmountSatsFor(parsed) : null;
 
     int amountSats;
@@ -299,20 +357,37 @@ class _SendScreenState extends State<SendScreen> {
 
     setState(() => _sending = true);
     try {
-      final payment = await BreezService.instance.sendPayment(
+      final prepared = await BreezService.instance.preparePayment(
         destination,
         amountSats: amountSats,
         parsedInput: parsed,
       );
       if (!mounted) return;
-      await _showResultDialog(
-        success: true,
-        title: 'Pagamento enviado',
-        message:
-            '${_formatThousands(payment.amount.toInt())} sats enviados com sucesso.',
+      final speed = await _confirmPreparedPayment(prepared, amountSats);
+      if (!mounted || speed == null) return;
+      final payment = await BreezService.instance.sendPreparedPayment(
+        prepared,
+        onchainSpeed: speed,
       );
       if (!mounted) return;
-      Navigator.of(context).pop();
+      final completed = payment.status == PaymentStatus.completed;
+      final pending = payment.status == PaymentStatus.pending;
+      await _showResultDialog(
+        success: completed,
+        title: completed
+            ? 'Pagamento concluído'
+            : pending
+                ? 'Pagamento pendente'
+                : 'Pagamento falhou',
+        message: completed
+            ? '${_formatThousands(payment.amount.toInt())} sats enviados com sucesso.'
+            : pending
+                ? 'O pagamento foi aceito, mas ainda aguarda confirmação. '
+                    'Confira o histórico antes de tentar novamente.'
+                : 'O SDK informou que o pagamento não foi concluído.',
+      );
+      if (!mounted) return;
+      if (completed || pending) Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       await _showResultDialog(
@@ -323,6 +398,75 @@ class _SendScreenState extends State<SendScreen> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Future<OnchainConfirmationSpeed?> _confirmPreparedPayment(
+    BreezPreparedPayment prepared,
+    int amountSats,
+  ) {
+    var selectedSpeed = OnchainConfirmationSpeed.medium;
+    return showDialog<OnchainConfirmationSpeed>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final fee = prepared.feeFor(selectedSpeed).toInt();
+          return AlertDialog(
+            title: const Text('Confirmar pagamento'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Valor: ${_formatThousands(amountSats)} sats'),
+                const SizedBox(height: 8),
+                Text('Taxa estimada: ${_formatThousands(fee)} sats'),
+                if (prepared.isOnchain) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Velocidade de confirmação',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  RadioGroup<OnchainConfirmationSpeed>(
+                    groupValue: selectedSpeed,
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => selectedSpeed = value);
+                      }
+                    },
+                    child: const Column(
+                      children: [
+                        RadioListTile(
+                          value: OnchainConfirmationSpeed.slow,
+                          title: Text('Econômica'),
+                        ),
+                        RadioListTile(
+                          value: OnchainConfirmationSpeed.medium,
+                          title: Text('Normal'),
+                        ),
+                        RadioListTile(
+                          value: OnchainConfirmationSpeed.fast,
+                          title: Text('Rápida'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(selectedSpeed),
+                child: const Text('Enviar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   static String _formatThousands(int value) {
@@ -366,7 +510,38 @@ class _SendScreenState extends State<SendScreen> {
                 const SizedBox(width: 48),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                  value: false,
+                  icon: Icon(Icons.bolt),
+                  label: Text('Lightning'),
+                ),
+                ButtonSegment(
+                  value: true,
+                  icon: Icon(Icons.currency_bitcoin),
+                  label: Text('Bitcoin'),
+                ),
+              ],
+              selected: {_sendOnchain},
+              onSelectionChanged: _sending
+                  ? null
+                  : (selection) => _selectPaymentNetwork(selection.first),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _sendOnchain
+                  ? 'Envie para um endereço Bitcoin. A taxa e a velocidade '
+                      'serão mostradas antes da confirmação.'
+                  : 'Envie por fatura, endereço Lightning ou Spark.',
+              style: const TextStyle(
+                color: SatraColors.medium,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 14),
             Row(
               children: [
                 OutlinedButton.icon(
@@ -385,9 +560,9 @@ class _SendScreenState extends State<SendScreen> {
               ],
             ),
             const SizedBox(height: 14),
-            const Text(
-              'FATURA OU ENDEREÇO',
-              style: TextStyle(
+            Text(
+              _sendOnchain ? 'ENDEREÇO BITCOIN' : 'FATURA OU ENDEREÇO',
+              style: const TextStyle(
                   color: SatraColors.medium,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
@@ -409,11 +584,12 @@ class _SendScreenState extends State<SendScreen> {
                       minLines: 3,
                       maxLines: 5,
                       style: const TextStyle(color: SatraColors.navy),
-                      decoration: const InputDecoration(
-                        hintText:
-                            'Fatura Lightning, endereço Lightning ou Spark',
+                      decoration: InputDecoration(
+                        hintText: _sendOnchain
+                            ? 'Endereço Bitcoin ou URI bitcoin:'
+                            : 'Fatura Lightning, endereço Lightning ou Spark',
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.all(16),
+                        contentPadding: const EdgeInsets.all(16),
                       ),
                     ),
                   ),
@@ -446,12 +622,33 @@ class _SendScreenState extends State<SendScreen> {
               Row(
                 children: [
                   const Icon(Icons.error_outline,
-                      color: Color(0xFFD64545), size: 16),
+                      color: SatraColors.error, size: 16),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(_parseError!,
                         style: const TextStyle(
-                            color: Color(0xFFD64545), fontSize: 13)),
+                            color: SatraColors.error, fontSize: 13)),
+                  ),
+                ],
+              )
+            else if (parsed != null &&
+                !_destinationMatchesSelectedNetwork(parsed))
+              Row(
+                children: [
+                  const Icon(Icons.swap_horiz,
+                      color: SatraColors.warningIcon, size: 17),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _sendOnchain
+                          ? 'Destino Lightning detectado. Selecione Lightning.'
+                          : 'Endereço Bitcoin detectado. Selecione Bitcoin.',
+                      style: const TextStyle(
+                        color: SatraColors.warningDark,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               )

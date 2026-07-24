@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart';
 import 'package:flutter/material.dart';
 
+import '../config/app_config.dart';
 import '../route_observer.dart';
 import '../routes.dart';
 import '../services/breez_service.dart';
+import '../services/escape_status.dart';
+import '../services/nfc_key_password_service.dart';
 import '../services/nfc_service.dart';
 import '../services/nostr_service.dart';
 import '../theme/colors.dart';
@@ -53,7 +56,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
   // button, and returning to this screen starts hidden again.
   bool _balanceHidden = true;
   _FiatCurrency _selectedFiatCurrency = _fiatCurrencies.first;
-  late final Future<void> _connectFuture;
+  late Future<void> _connectFuture;
 
   // Drives the "payment received" banner (see [_buildPaymentBanner]) shown
   // whenever a new *completed* incoming payment is seen — not on every
@@ -65,6 +68,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
   late final Animation<Offset> _paymentBannerSlide;
   String? _paymentBannerText;
   StreamSubscription<List<Payment>>? _paymentsSubscription;
+  StreamSubscription<Map<String, double>>? _fiatRatesSubscription;
+  Timer? _paymentsLoadingTimer;
+  bool _paymentsLoadTimedOut = false;
   final Set<String> _seenCompletedReceiveIds = {};
   bool _paymentsBaselineSet = false;
 
@@ -82,9 +88,14 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
   @override
   void initState() {
     super.initState();
-    _connectFuture = BreezService.instance.initialize();
+    _connectFuture = _connectWallet();
     _loadSelectedFiatCurrency();
-    _startNfcListening();
+
+    // NFC hardware activation competes with the first frame for resources;
+    // defer it until the wallet screen has been painted at least once.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startNfcListening();
+    });
 
     _paymentBannerController = AnimationController(
       vsync: this,
@@ -129,7 +140,35 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
       ),
     ]).animate(_paymentBannerController);
     _paymentsSubscription =
-        BreezService.instance.paymentsStream.listen(_onPaymentsUpdate);
+        BreezService.instance.paymentsStream.listen((payments) {
+      _paymentsLoadingTimer?.cancel();
+      if (_paymentsLoadTimedOut && mounted) {
+        setState(() => _paymentsLoadTimedOut = false);
+      }
+      _onPaymentsUpdate(payments);
+    });
+    if (BreezService.instance.cachedPayments == null) {
+      _startPaymentsLoadingTimer();
+    }
+    _fiatRatesSubscription = BreezService.instance.fiatRatesStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _connectWallet() async {
+    try {
+      await BreezService.instance.initialize();
+    } catch (error, stackTrace) {
+      debugPrint('[WalletHome] Breez connection failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
+  void _retryConnection() {
+    setState(() {
+      _connectFuture = BreezService.instance.reconnect();
+    });
   }
 
   Future<void> _loadSelectedFiatCurrency() async {
@@ -190,6 +229,8 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
     satraRouteObserver.unsubscribe(this);
     NfcService.instance.stopListening();
     _paymentsSubscription?.cancel();
+    _fiatRatesSubscription?.cancel();
+    _paymentsLoadingTimer?.cancel();
     _paymentBannerController.dispose();
     super.dispose();
   }
@@ -221,6 +262,26 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
     );
   }
 
+  void _startPaymentsLoadingTimer() {
+    _paymentsLoadingTimer?.cancel();
+    _paymentsLoadingTimer = Timer(const Duration(seconds: 12), () {
+      if (mounted && BreezService.instance.cachedPayments == null) {
+        setState(() => _paymentsLoadTimedOut = true);
+      }
+    });
+  }
+
+  Future<void> _retryPayments() async {
+    setState(() => _paymentsLoadTimedOut = false);
+    _startPaymentsLoadingTimer();
+    try {
+      await BreezService.instance.refreshPayments();
+    } catch (error) {
+      _paymentsLoadingTimer?.cancel();
+      if (mounted) setState(() => _paymentsLoadTimedOut = true);
+    }
+  }
+
   static String _formatFiat(double value, _FiatCurrency currency) {
     final fixed = value.toStringAsFixed(2);
     final parts = fixed.split('.');
@@ -228,8 +289,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
     final grouped = StringBuffer();
     final thousandsSeparator = currency.commaDecimal ? '.' : ',';
     for (var i = 0; i < integerDigits.length; i++) {
-      if (i > 0 && (integerDigits.length - i) % 3 == 0)
+      if (i > 0 && (integerDigits.length - i) % 3 == 0) {
         grouped.write(thousandsSeparator);
+      }
       grouped.write(integerDigits[i]);
     }
     final decimalSeparator = currency.commaDecimal ? ',' : '.';
@@ -310,18 +372,26 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                 style: TextStyle(color: SatraColors.medium, height: 1.3),
               ),
               const SizedBox(height: 12),
-              for (final currency in _fiatCurrencies)
-                RadioListTile<_FiatCurrency>(
-                  value: currency,
-                  groupValue: _selectedFiatCurrency,
-                  activeColor: SatraColors.medium,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('${currency.symbol}  ${currency.label}',
-                      style: const TextStyle(color: SatraColors.navy)),
-                  subtitle: Text(currency.code,
-                      style: const TextStyle(color: SatraColors.medium)),
-                  onChanged: (value) => Navigator.of(sheetContext).pop(value),
+              RadioGroup<_FiatCurrency>(
+                groupValue: _selectedFiatCurrency,
+                onChanged: (value) {
+                  if (value != null) Navigator.of(sheetContext).pop(value);
+                },
+                child: Column(
+                  children: [
+                    for (final currency in _fiatCurrencies)
+                      RadioListTile<_FiatCurrency>(
+                        value: currency,
+                        activeColor: SatraColors.medium,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('${currency.symbol}  ${currency.label}',
+                            style: const TextStyle(color: SatraColors.navy)),
+                        subtitle: Text(currency.code,
+                            style: const TextStyle(color: SatraColors.medium)),
+                      ),
+                  ],
                 ),
+              ),
             ],
           ),
         ),
@@ -329,7 +399,18 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
     );
     if (!mounted || selected == null) return;
     await BreezService.instance.setSelectedFiatCurrency(selected.code);
-    if (mounted) setState(() => _selectedFiatCurrency = selected);
+    if (!mounted) return;
+    setState(() => _selectedFiatCurrency = selected);
+    if (BreezService.instance.cachedFiatRate(selected.code) == null) {
+      try {
+        await BreezService.instance.refreshFiatRates();
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cotação indisponível no momento: $error')),
+        );
+      }
+    }
   }
 
   void _openEscapeInfo() {
@@ -387,16 +468,66 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
     );
   }
 
-  void _onEscapeConfirmed() {
-    // None of these are awaited — the user must see the confirmation screen
-    // immediately, regardless of how long the Breez sweep or a slow Nostr
-    // relay takes.
+  Future<bool> _onEscapeConfirmed() async {
+    final escapeMnemonic =
+        await BreezService.instance.getEscapeWalletMnemonic();
+    final hasKeyPassword = await NfcKeyPasswordService.instance.hasPassword();
+    if (!mounted) return false;
+    if (escapeMnemonic == null || escapeMnemonic.isEmpty || !hasKeyPassword) {
+      await _showEscapeSetupRequired(
+        missingWallet: escapeMnemonic == null || escapeMnemonic.isEmpty,
+        missingPassword: !hasKeyPassword,
+      );
+      return false;
+    }
+
+    // Reset the status tracker so the confirmation screen starts fresh,
+    // then fire the two background tasks. Both update EscapeStatus as they
+    // resolve — the confirmation screen listens and shows real-time
+    // success/failure per step, so the user isn't left guessing whether
+    // the money actually moved or the alert actually went out.
+    EscapeStatus.instance.reset();
     unawaited(_sweepToFixedEscapeWallet());
     unawaited(_sendEscapeAlert());
     Navigator.of(context).pushNamedAndRemoveUntil(
       SatraRoutes.escapeConfirmation,
       (route) => false,
     );
+    return true;
+  }
+
+  Future<void> _showEscapeSetupRequired({
+    required bool missingWallet,
+    required bool missingPassword,
+  }) async {
+    final missing = [
+      if (missingWallet) 'a carteira/chave física de escape',
+      if (missingPassword) 'a senha da chave física',
+    ].join(' e ');
+    final configure = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.key_off_outlined, color: SatraColors.warning),
+        title: const Text('Configure o escape primeiro'),
+        content: Text(
+          'Ainda falta configurar $missing. O modo de escape não foi ativado '
+          'e nenhum saldo foi movimentado.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Agora não'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Configurar'),
+          ),
+        ],
+      ),
+    );
+    if (configure == true && mounted) {
+      Navigator.of(context).pushNamed(SatraRoutes.nfcKeyPasswordSetup);
+    }
   }
 
   /// Sweeps this wallet's entire balance to the FIXED escape wallet
@@ -418,22 +549,81 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
           await BreezService.instance.getEscapeWalletMnemonic();
       if (escapeMnemonic == null || escapeMnemonic.isEmpty) {
         debugPrint('[WalletHomeScreen] nenhuma carteira de escape configurada');
+        EscapeStatus.instance.setSweep(
+            const EscapeStepState.failed('Sem carteira de escape configurada'));
         return;
       }
 
       await BreezService.instance
           .executeEscapeSweep(escapeWalletMnemonic: escapeMnemonic);
+      EscapeStatus.instance.setSweep(const EscapeStepState.success());
     } catch (e) {
       // Best-effort — the confirmation screen is shown regardless of outcome.
       debugPrint('[WalletHomeScreen] escape sweep failed: $e');
+      EscapeStatus.instance.setSweep(EscapeStepState.failed('$e'));
     }
   }
 
   Future<void> _sendEscapeAlert() async {
     try {
-      await NostrService.instance.sendEscapeAlert();
+      final delivered = await NostrService.instance.sendEscapeAlert();
+      if (delivered > 0) {
+        EscapeStatus.instance.setAlert(const EscapeStepState.success());
+      } else {
+        EscapeStatus.instance.setAlert(
+          const EscapeStepState.failed(
+            'Nenhum contato recebeu confirmação de um relay.',
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('[WalletHomeScreen] escape Nostr alert failed: $e');
+      EscapeStatus.instance.setAlert(EscapeStepState.failed('$e'));
+    }
+  }
+
+  Future<void> _claimOnchainDeposit(DepositInfo deposit) async {
+    final fees = await BreezService.instance.getRecommendedOnchainFees();
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reivindicar depósito'),
+        content: Text(
+          'Depósito: ${_formatThousands(deposit.amountSats.toInt())} sats\n\n'
+          'A Breez tentará usar a taxa recomendada da rede '
+          '(${fees.fastestFee} sat/vB, com tolerância de 1 sat/vB).',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Reivindicar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final payment = await BreezService.instance.claimDeposit(deposit);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            payment.status == PaymentStatus.completed
+                ? 'Depósito reivindicado.'
+                : 'Reivindicação enviada; acompanhe o status.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível reivindicar: $e')),
+      );
     }
   }
 
@@ -455,6 +645,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(
+                          tooltip: _balanceHidden
+                              ? 'Mostrar saldo'
+                              : 'Ocultar saldo',
                           icon: Icon(
                               _balanceHidden
                                   ? Icons.visibility_off
@@ -464,6 +657,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                               setState(() => _balanceHidden = !_balanceHidden),
                         ),
                         IconButton(
+                          tooltip: 'Menu',
                           icon: const Icon(Icons.menu, color: SatraColors.navy),
                           onPressed: () => Scaffold.of(context).openEndDrawer(),
                         ),
@@ -490,13 +684,37 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                           );
                         }
                         if (connectSnapshot.hasError) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 14),
-                            child: Text(
-                              'Não foi possível conectar à carteira',
-                              style: TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.w600),
+                          final missingConfiguration =
+                              !AppConfig.isBreezConfigured;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            child: Column(
+                              children: [
+                                Text(
+                                  missingConfiguration
+                                      ? 'Carteira sem configuração Breez'
+                                      : 'Não foi possível conectar à carteira',
+                                  style: const TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 6),
+                                if (missingConfiguration)
+                                  const Text(
+                                    'Inicie o app com ./tool/run_android.sh '
+                                    '(ou a configuração de "Run" do VS Code) '
+                                    'para carregar a chave Breez.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                        color: SatraColors.medium,
+                                        fontSize: 12),
+                                  )
+                                else
+                                  TextButton(
+                                    onPressed: _retryConnection,
+                                    child: const Text('Tentar novamente'),
+                                  ),
+                              ],
                             ),
                           );
                         }
@@ -514,29 +732,44 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
 
                             return Column(
                               children: [
-                                Text.rich(
-                                  TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: _balanceHidden
-                                            ? '*****'
-                                            : (sats != null
-                                                ? _formatThousands(sats)
-                                                : '···'),
-                                        style: const TextStyle(
-                                          fontSize: 30,
-                                          fontWeight: FontWeight.w900,
-                                          color: SatraColors.navy,
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 420),
+                                  switchInCurve: Curves.easeOutBack,
+                                  transitionBuilder: (child, animation) =>
+                                      FadeTransition(
+                                    opacity: animation,
+                                    child: ScaleTransition(
+                                      scale: animation,
+                                      child: child,
+                                    ),
+                                  ),
+                                  child: Text.rich(
+                                    key: ValueKey(
+                                      '${_balanceHidden}_$sats',
+                                    ),
+                                    TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: _balanceHidden
+                                              ? '*****'
+                                              : (sats != null
+                                                  ? _formatThousands(sats)
+                                                  : '···'),
+                                          style: const TextStyle(
+                                            fontSize: 30,
+                                            fontWeight: FontWeight.w900,
+                                            color: SatraColors.navy,
+                                          ),
                                         ),
-                                      ),
-                                      const TextSpan(
-                                        text: '  Sats',
-                                        style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: SatraColors.navy),
-                                      ),
-                                    ],
+                                        const TextSpan(
+                                          text: '  Sats',
+                                          style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: SatraColors.navy),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -599,8 +832,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                                   .pushNamed(SatraRoutes.send),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: SatraColors.navy,
+                                backgroundColor:
+                                    SatraColors.light.withValues(alpha: 0.28),
                                 side:
-                                    const BorderSide(color: SatraColors.light),
+                                    const BorderSide(color: SatraColors.medium),
                                 shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(26)),
                               ),
@@ -613,6 +848,62 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                       ],
                     ),
                     const SizedBox(height: 24),
+                    StreamBuilder<List<DepositInfo>>(
+                      stream: BreezService.instance.unclaimedDepositsStream,
+                      initialData:
+                          BreezService.instance.cachedUnclaimedDeposits,
+                      builder: (context, snapshot) {
+                        final deposits = snapshot.data ?? const [];
+                        if (deposits.isEmpty) return const SizedBox.shrink();
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 18),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: SatraColors.warningBg,
+                            borderRadius: BorderRadius.circular(14),
+                            border:
+                                Border.all(color: SatraColors.warningAccent),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'DEPÓSITO BITCOIN AGUARDANDO AÇÃO',
+                                style: TextStyle(
+                                  color: SatraColors.warningDark,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '${deposits.length} depósito(s) on-chain não '
+                                'foram reivindicados automaticamente.',
+                                style: const TextStyle(
+                                  color: SatraColors.warningDark,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              for (final deposit in deposits)
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: deposit.isMature
+                                        ? () => _claimOnchainDeposit(deposit)
+                                        : null,
+                                    child: Text(
+                                      deposit.isMature
+                                          ? 'Reivindicar ${_formatThousands(deposit.amountSats.toInt())} sats'
+                                          : '${_formatThousands(deposit.amountSats.toInt())} sats · aguardando confirmações',
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
@@ -634,16 +925,61 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                         ),
                         child: StreamBuilder<List<Payment>>(
                           stream: BreezService.instance.paymentsStream,
+                          initialData: BreezService.instance.cachedPayments,
                           builder: (context, paymentsSnapshot) {
                             final payments = paymentsSnapshot.data;
                             if (payments == null) {
+                              if (_paymentsLoadTimedOut) {
+                                return Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.cloud_off_outlined,
+                                          color: SatraColors.medium,
+                                          size: 30,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        const Text(
+                                          'Não foi possível carregar agora',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: SatraColors.navy,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: _retryPayments,
+                                          child: const Text('Tentar novamente'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }
                               return const Center(
-                                child: SizedBox(
-                                  height: 22,
-                                  width: 22,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: SatraColors.medium),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: SatraColors.medium,
+                                      ),
+                                    ),
+                                    SizedBox(height: 10),
+                                    Text(
+                                      'Sincronizando transações…',
+                                      style: TextStyle(
+                                        color: SatraColors.medium,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               );
                             }
@@ -676,6 +1012,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                     _EscapeSlider(onConfirmed: _onEscapeConfirmed),
                     const SizedBox(height: 8),
                     IconButton(
+                      tooltip: 'O que é o modo de escape',
                       icon: const Icon(Icons.info_outline,
                           color: SatraColors.medium),
                       onPressed: _openEscapeInfo,
@@ -729,7 +1066,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
                         width: 36,
                         height: 36,
                         decoration: const BoxDecoration(
-                            color: Color(0xFF3FBF6F), shape: BoxShape.circle),
+                            color: SatraColors.success, shape: BoxShape.circle),
                         alignment: Alignment.center,
                         child: const Icon(Icons.arrow_downward,
                             color: Colors.white, size: 20),
@@ -762,7 +1099,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen>
 /// before calling [onConfirmed] — a beat of "confirmed" feedback instead of
 /// cutting straight to the next screen.
 class _EscapeSlider extends StatefulWidget {
-  final VoidCallback onConfirmed;
+  final Future<bool> Function() onConfirmed;
 
   const _EscapeSlider({required this.onConfirmed});
 
@@ -801,12 +1138,19 @@ class _EscapeSliderState extends State<_EscapeSlider>
     super.dispose();
   }
 
-  void _playSuccessThenConfirm() {
+  Future<void> _playSuccessThenConfirm() async {
     _dragFractionAtRelease = _dragFraction;
     setState(() => _completing = true);
-    _successController.forward(from: 0).whenComplete(() {
+    _successController.forward(from: 0).whenComplete(() async {
       if (!mounted) return;
-      widget.onConfirmed();
+      final accepted = await widget.onConfirmed();
+      if (!mounted || accepted) return;
+      _successController.reset();
+      setState(() {
+        _completing = false;
+        _dragFraction = 0;
+        _dragFractionAtRelease = 0;
+      });
     });
   }
 
@@ -846,16 +1190,36 @@ class _EscapeSliderState extends State<_EscapeSlider>
             final fillWidth = (fraction * maxDrag + _handleSize + 8)
                 .clamp(0.0, constraints.maxWidth);
 
-            return Container(
-              height: _trackHeight,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(_trackHeight / 2),
-                border: Border.all(color: SatraColors.light),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(_trackHeight / 2),
-                child: Stack(
+            return GestureDetector(
+              onHorizontalDragUpdate: _completing
+                  ? null
+                  : (details) {
+                      setState(() {
+                        _dragFraction = ((_dragFraction * maxDrag) +
+                                details.delta.dx) /
+                            maxDrag;
+                        _dragFraction = _dragFraction.clamp(0.0, 1.0);
+                      });
+                    },
+              onHorizontalDragEnd: _completing
+                  ? null
+                  : (details) {
+                      if (_dragFraction > 0.85) {
+                        _playSuccessThenConfirm();
+                      } else {
+                        setState(() => _dragFraction = 0);
+                      }
+                    },
+              child: Container(
+                height: _trackHeight,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(_trackHeight / 2),
+                  border: Border.all(color: SatraColors.light),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(_trackHeight / 2),
+                  child: Stack(
                   alignment: Alignment.centerLeft,
                   children: [
                     Align(
@@ -877,47 +1241,33 @@ class _EscapeSliderState extends State<_EscapeSlider>
                     ),
                     Padding(
                       padding: const EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onHorizontalDragUpdate: _completing
-                            ? null
-                            : (details) {
-                                setState(() {
-                                  _dragFraction = ((_dragFraction * maxDrag) +
-                                          details.delta.dx) /
-                                      maxDrag;
-                                  _dragFraction = _dragFraction.clamp(0.0, 1.0);
-                                });
-                              },
-                        onHorizontalDragEnd: _completing
-                            ? null
-                            : (details) {
-                                if (_dragFraction > 0.85) {
-                                  _playSuccessThenConfirm();
-                                } else {
-                                  setState(() => _dragFraction = 0);
-                                }
-                              },
+                      child: Semantics(
+                        label: 'Deslize para ativar o modo de escape',
+                        hint: 'Arraste da esquerda para a direita até o fim',
+                        slider: true,
+                        value: '${(_dragFraction * 100).round()}%',
                         child: Transform.translate(
-                          offset: Offset(fraction * maxDrag, 0),
-                          child: Transform.scale(
-                            scale: handleScale,
-                            child: Container(
-                              width: _handleSize,
-                              height: _handleSize,
-                              decoration: const BoxDecoration(
-                                  color: SatraColors.navy,
-                                  shape: BoxShape.circle),
-                              child: Icon(
-                                showCheck ? Icons.check : Icons.arrow_forward,
-                                color: Colors.white,
-                                size: 20,
+                            offset: Offset(fraction * maxDrag, 0),
+                            child: Transform.scale(
+                              scale: handleScale,
+                              child: Container(
+                                width: _handleSize,
+                                height: _handleSize,
+                                decoration: const BoxDecoration(
+                                    color: SatraColors.navy,
+                                    shape: BoxShape.circle),
+                                child: Icon(
+                                  showCheck ? Icons.check : Icons.arrow_forward,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
                               ),
                             ),
-                          ),
                         ),
                       ),
                     ),
                   ],
+                  ),
                 ),
               ),
             );
@@ -934,8 +1284,8 @@ class _TransactionRow extends StatelessWidget {
 
   const _TransactionRow({required this.payment});
 
-  static const _receiveColor = Color(0xFF3FBF6F);
-  static const _failedColor = Color(0xFFD64545);
+  static const _receiveColor = SatraColors.success;
+  static const _failedColor = SatraColors.error;
 
   static String _twoDigits(int value) => value.toString().padLeft(2, '0');
 

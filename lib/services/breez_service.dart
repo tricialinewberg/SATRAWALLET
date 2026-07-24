@@ -1,11 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:bip39_plus/bip39_plus.dart' as bip39;
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:crypto/crypto.dart' as crypto;
+import 'package:flutter/foundation.dart' show debugPrint, debugPrintStack;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
+
+import '../config/app_config.dart';
+import 'breez_payment_client.dart';
+
+export 'breez_payment_client.dart';
 
 /// Owns the Breez SDK (Spark) connection for the app's lifetime: generating
 /// or loading the wallet's mnemonic, connecting, and exposing the handful
@@ -21,14 +29,27 @@ class BreezService {
   static const _fiatCurrencyKey = 'satra_fiat_currency';
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-  final StreamController<int> _balanceController = StreamController<int>.broadcast();
-  final StreamController<List<Payment>> _paymentsController = StreamController<List<Payment>>.broadcast();
+  final StreamController<int> _balanceController =
+      StreamController<int>.broadcast();
+  final StreamController<List<Payment>> _paymentsController =
+      StreamController<List<Payment>>.broadcast();
+  final StreamController<List<DepositInfo>> _unclaimedDepositsController =
+      StreamController<List<DepositInfo>>.broadcast();
+  final StreamController<Map<String, double>> _fiatRatesController =
+      StreamController<Map<String, double>>.broadcast();
 
   BreezSdk? _sdk;
   StreamSubscription<SdkEvent>? _eventSubscription;
   Future<void>? _initializing;
+  Completer<void>? _walletSwitch;
   Map<String, double> _cachedFiatRates = const {};
   int? _cachedBalanceSats;
+  List<Payment>? _cachedPayments;
+  BigInt? _lastBitcoinReceiveFeeSats;
+  List<DepositInfo> _cachedUnclaimedDeposits = const [];
+  bool _refreshRunning = false;
+  bool _refreshPending = false;
+  bool _fiatRefreshPending = false;
 
   /// Whether [BreezSdkSparkLib.init] has run. That call wires up the native
   /// flutter_rust_bridge library for the whole process and — unlike
@@ -49,6 +70,15 @@ class BreezService {
   /// Emits the most recent payments (newest first) right after connecting,
   /// and again whenever a payment lands or the wallet re-syncs.
   Stream<List<Payment>> get paymentsStream => _paymentsController.stream;
+  List<Payment>? get cachedPayments =>
+      _cachedPayments == null ? null : List.unmodifiable(_cachedPayments!);
+  Stream<List<DepositInfo>> get unclaimedDepositsStream =>
+      _unclaimedDepositsController.stream;
+  Stream<Map<String, double>> get fiatRatesStream =>
+      _fiatRatesController.stream;
+  List<DepositInfo> get cachedUnclaimedDeposits =>
+      List.unmodifiable(_cachedUnclaimedDeposits);
+  BigInt? get lastBitcoinReceiveFeeSats => _lastBitcoinReceiveFeeSats;
 
   bool get isConnected => _sdk != null;
 
@@ -59,6 +89,8 @@ class BreezService {
   /// — concurrent/later calls await the same in-flight connection. A failed
   /// attempt is not cached, so the next call retries from scratch.
   Future<void> initialize() async {
+    await _waitForWalletSwitch();
+    if (_sdk != null) return;
     final inFlight = _initializing;
     if (inFlight != null) return inFlight;
     await _connectWithMnemonic(null);
@@ -74,8 +106,17 @@ class BreezService {
     _initializing = attempt;
     try {
       await attempt;
-    } catch (_) {
       _initializing = null;
+    } catch (error) {
+      _initializing = null;
+      // A failed native connect may leave partially initialized resources.
+      // Tear them down so the next attempt starts from a known state.
+      try {
+        await disconnect();
+      } catch (cleanupError) {
+        debugPrint('[BreezService] cleanup after failed init also failed: '
+            '$cleanupError (original error: $error)');
+      }
       rethrow;
     }
   }
@@ -87,40 +128,163 @@ class BreezService {
     }
 
     final mnemonic = mnemonicOverride ?? await _getOrCreateMnemonic();
-    final apiKey = dotenv.env['BREEZ_API_KEY'] ?? '';
-    final config = defaultConfig(network: Network.mainnet).copyWith(apiKey: apiKey);
+    final apiKey = AppConfig.requireBreezApiKey();
+    final config =
+        defaultConfig(network: Network.mainnet).copyWith(apiKey: apiKey);
     final seed = Seed.mnemonic(mnemonic: mnemonic, passphrase: null);
-    final storageDir = await _storageDir();
+    // When mnemonicOverride is null, _getOrCreateMnemonic already guaranteed
+    // this mnemonic IS the stored primary — no second Keystore read needed.
+    // When overridden (escape/restore), compare once against the stored value
+    // so the legacy-dir migration only runs for the true primary wallet.
+    final isStoredPrimary = mnemonicOverride == null ||
+        (await _secureStorage.read(key: _mnemonicKey))?.trim() ==
+            mnemonic.trim();
+    final storageDir =
+        await _storageDir(mnemonic, isStoredPrimary: isStoredPrimary);
 
-    _sdk = await connect(
-      request: ConnectRequest(config: config, seed: seed, storageDir: storageDir),
+    final sdk = await connect(
+      request:
+          ConnectRequest(config: config, seed: seed, storageDir: storageDir),
     );
+    _sdk = sdk;
 
-    _eventSubscription = _sdk!.addEventListener().listen((event) {
+    _eventSubscription = sdk.addEventListener().listen((event) {
       switch (event) {
         case SdkEvent_Synced():
         case SdkEvent_PaymentSucceeded():
         case SdkEvent_PaymentPending():
         case SdkEvent_NewDeposits():
         case SdkEvent_ClaimedDeposits():
-          unawaited(_refreshBalance());
-          unawaited(_refreshPayments());
+          _refreshDataBestEffort(source: event.runtimeType.toString());
+          break;
+        case SdkEvent_UnclaimedDeposits(:final unclaimedDeposits):
+          _cachedUnclaimedDeposits = unclaimedDeposits;
+          _unclaimedDepositsController.add(unclaimedDeposits);
           break;
         default:
           break;
       }
+    }, onError: (Object error, StackTrace stackTrace) {
+      debugPrint('[BreezService] event stream failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
     });
 
-    await _refreshBalance();
-    await _refreshPayments();
-    _cachedFiatRates = await _fetchFiatRates();
+    // `connect()` is the connection boundary. Everything below is cached UI
+    // data and must never turn an already connected wallet into a connection
+    // failure. Each operation logs and recovers independently.
+    _refreshDataBestEffort(source: 'initial-connect', includeFiat: true);
   }
 
-  Future<String> _storageDir() async {
+  void _refreshDataBestEffort({
+    required String source,
+    bool includeFiat = false,
+  }) {
+    _refreshPending = true;
+    _fiatRefreshPending |= includeFiat;
+    if (_refreshRunning) return;
+    unawaited(_drainDataRefreshes(source));
+  }
+
+  /// SDK sync/payment events often arrive in short bursts. At most one batch
+  /// of native reads runs at a time; events received during it collapse into
+  /// one follow-up batch instead of multiplying platform-channel and network
+  /// work (and the UI rebuilds caused by their stream emissions).
+  Future<void> _drainDataRefreshes(String source) async {
+    _refreshRunning = true;
+    try {
+      while (_refreshPending) {
+        _refreshPending = false;
+        final includeFiat = _fiatRefreshPending;
+        _fiatRefreshPending = false;
+        await Future.wait([
+          _runBestEffort('balance/$source', _refreshBalance),
+          _runBestEffort('payments/$source', _refreshPayments),
+          _runBestEffort(
+            'unclaimed-deposits/$source',
+            _refreshUnclaimedDeposits,
+          ),
+          if (includeFiat)
+            _runBestEffort('fiat-rates/$source', _refreshFiatRates),
+        ]);
+      }
+    } finally {
+      _refreshRunning = false;
+      // No await occurs between the loop condition and finally, but retain
+      // this guard so a future refactor cannot strand a queued refresh.
+      if (_refreshPending) {
+        _refreshDataBestEffort(source: source);
+      }
+    }
+  }
+
+  Future<void> _runBestEffort(
+    String operation,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+    } catch (error, stackTrace) {
+      debugPrint('[BreezService] $operation failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  /// Discards the current native session and performs a fresh connection.
+  /// Used by the UI retry action; unlike [initialize], it never reuses an
+  /// already completed or unhealthy session.
+  Future<void> reconnect() async {
+    final lock = await _acquireWalletSwitch();
+    try {
+      await disconnect();
+      await _connectWithMnemonic(null);
+    } finally {
+      _releaseWalletSwitch(lock);
+    }
+  }
+
+  static String walletStorageId(String mnemonic) => crypto.sha256
+      .convert(utf8.encode(mnemonic.trim()))
+      .toString()
+      .substring(0, 16);
+
+  Future<String> _storageDir(String mnemonic,
+      {required bool isStoredPrimary}) async {
     final dir = await getApplicationDocumentsDirectory();
-    final path = '${dir.path}/breez-spark';
-    await Directory(path).create(recursive: true);
-    return path;
+    final root = Directory('${dir.path}/breez-spark-wallets');
+    await root.create(recursive: true);
+    final target = Directory('${root.path}/${walletStorageId(mnemonic)}');
+
+    // One-time migration from the original single-wallet directory. Only the
+    // persisted primary wallet may inherit it; an escape wallet always starts
+    // in its own directory.
+    final legacy = Directory('${dir.path}/breez-spark');
+    if (!await target.exists() && isStoredPrimary && await legacy.exists()) {
+      await legacy.rename(target.path);
+    } else {
+      await target.create(recursive: true);
+    }
+    return target.path;
+  }
+
+  Future<void> _waitForWalletSwitch() async {
+    final active = _walletSwitch;
+    if (active != null) await active.future;
+  }
+
+  Future<Completer<void>> _acquireWalletSwitch() async {
+    while (_walletSwitch != null) {
+      await _walletSwitch!.future;
+    }
+    final lock = Completer<void>();
+    _walletSwitch = lock;
+    return lock;
+  }
+
+  void _releaseWalletSwitch(Completer<void> lock) {
+    if (identical(_walletSwitch, lock)) {
+      _walletSwitch = null;
+      lock.complete();
+    }
   }
 
   BreezSdk get _requireSdk {
@@ -132,7 +296,8 @@ class BreezService {
   }
 
   Future<void> _refreshBalance() async {
-    final info = await _requireSdk.getInfo(request: const GetInfoRequest(ensureSynced: false));
+    final info = await _requireSdk.getInfo(
+        request: const GetInfoRequest(ensureSynced: false));
     final balanceSats = info.balanceSats.toInt();
     _cachedBalanceSats = balanceSats;
     _balanceController.add(balanceSats);
@@ -145,32 +310,76 @@ class BreezService {
     final response = await _requireSdk.listPayments(
       request: const ListPaymentsRequest(limit: 20, sortAscending: false),
     );
-    _paymentsController.add(response.payments);
+    _cachedPayments = List.unmodifiable(response.payments);
+    _paymentsController.add(_cachedPayments!);
+  }
+
+  Future<void> refreshPayments() async {
+    await initialize();
+    await _refreshPayments();
+  }
+
+  Future<void> _refreshUnclaimedDeposits() async {
+    final response = await _requireSdk.listUnclaimedDeposits(
+      request: const ListUnclaimedDepositsRequest(),
+    );
+    _cachedUnclaimedDeposits = response.deposits;
+    _unclaimedDepositsController.add(response.deposits);
+  }
+
+  Future<Payment> claimDeposit(DepositInfo deposit) async {
+    await _waitForWalletSwitch();
+    final response = await _requireSdk.claimDeposit(
+      request: ClaimDepositRequest(
+        txid: deposit.txid,
+        vout: deposit.vout,
+        maxFee: MaxFee.networkRecommended(
+          leewaySatPerVbyte: BigInt.one,
+        ),
+      ),
+    );
+    await _refreshUnclaimedDeposits();
+    await _refreshBalance();
+    await _refreshPayments();
+    return response.payment;
+  }
+
+  Future<RecommendedFees> getRecommendedOnchainFees() async {
+    await _waitForWalletSwitch();
+    return _requireSdk.recommendedFees();
   }
 
   /// Current balance in sats.
   Future<int> getBalance() async {
-    final info = await _requireSdk.getInfo(request: const GetInfoRequest(ensureSynced: false));
+    await _waitForWalletSwitch();
+    final info = await _requireSdk.getInfo(
+        request: const GetInfoRequest(ensureSynced: false));
     return info.balanceSats.toInt();
   }
 
   /// Returns the wallet's Lightning Address, registering one (derived from
   /// the wallet's identity key) the first time it's needed.
   Future<String> getLightningAddress() async {
+    await _waitForWalletSwitch();
     final sdk = _requireSdk;
     final existing = await sdk.getLightningAddress();
     if (existing != null) return existing.lightningAddress;
 
-    final info = await sdk.getInfo(request: const GetInfoRequest(ensureSynced: false));
-    final baseUsername = 'satra${info.identityPubkey.substring(0, 10).toLowerCase()}';
+    final info =
+        await sdk.getInfo(request: const GetInfoRequest(ensureSynced: false));
+    final baseUsername =
+        'satra${info.identityPubkey.substring(0, 10).toLowerCase()}';
 
     final available = await sdk.checkLightningAddressAvailable(
       request: CheckLightningAddressRequest(username: baseUsername),
     );
-    final username = available ? baseUsername : '$baseUsername${DateTime.now().millisecondsSinceEpoch % 1000}';
+    final username = available
+        ? baseUsername
+        : '$baseUsername${DateTime.now().millisecondsSinceEpoch % 1000}';
 
     final registered = await sdk.registerLightningAddress(
-      request: RegisterLightningAddressRequest(username: username, description: 'Satra Wallet'),
+      request: RegisterLightningAddressRequest(
+          username: username, description: 'Satra Wallet'),
     );
     return registered.lightningAddress;
   }
@@ -182,7 +391,9 @@ class BreezService {
   /// [executeEscapeSweep], which needs this to drain a wallet's exact
   /// balance with [FeePolicy.feesIncluded], since a fixed-amount invoice
   /// would reject a payment for less than it demands).
-  Future<String> createInvoice(int? amountSats, {String description = 'Satra Wallet'}) async {
+  Future<String> createInvoice(int? amountSats,
+      {String description = 'Satra Wallet'}) async {
+    await _waitForWalletSwitch();
     final response = await _requireSdk.receivePayment(
       request: ReceivePaymentRequest(
         paymentMethod: ReceivePaymentMethod.bolt11Invoice(
@@ -193,6 +404,20 @@ class BreezService {
         ),
       ),
     );
+    return response.paymentRequest;
+  }
+
+  /// Returns an on-chain Bitcoin deposit address managed by the Spark SDK.
+  /// Network confirmations and deposit-claim fees apply.
+  Future<String> getBitcoinAddress({bool newAddress = false}) async {
+    await initialize();
+    final response = await _requireSdk.receivePayment(
+      request: ReceivePaymentRequest(
+        paymentMethod:
+            ReceivePaymentMethod.bitcoinAddress(newAddress: newAddress),
+      ),
+    );
+    _lastBitcoinReceiveFeeSats = response.fee;
     return response.paymentRequest;
   }
 
@@ -209,11 +434,8 @@ class BreezService {
   /// the LNURL pay-request details needed to resolve it into an invoice.
   /// Null for every other destination kind (invoices, on-chain/Spark
   /// addresses, ...), which [sendPayment] sends directly instead.
-  static LnurlPayRequestDetails? lnurlPayRequestDetailsFor(InputType parsed) => switch (parsed) {
-        InputType_LightningAddress(:final field0) => field0.payRequest,
-        InputType_LnurlPay(:final field0) => field0,
-        _ => null,
-      };
+  static LnurlPayRequestDetails? lnurlPayRequestDetailsFor(InputType parsed) =>
+      BreezPreparedPayment.lnurlPayRequestFor(parsed);
 
   /// Sends a payment to a pasted Lightning invoice or address.
   /// [amountSats] is required for amount-less destinations (e.g. a bare
@@ -245,55 +467,75 @@ class BreezService {
     InputType? parsedInput,
     FeePolicy? feePolicy,
   }) async {
+    final prepared = await preparePayment(
+      invoiceOrAddress,
+      amountSats: amountSats,
+      parsedInput: parsedInput,
+      feePolicy: feePolicy,
+    );
+    return sendPreparedPayment(prepared);
+  }
+
+  Future<BreezPreparedPayment> preparePayment(
+    String invoiceOrAddress, {
+    int? amountSats,
+    InputType? parsedInput,
+    FeePolicy? feePolicy,
+  }) async {
     await initialize();
-    final sdk = _requireSdk;
-    final trimmed = invoiceOrAddress.trim();
-
-    final parsed = parsedInput ?? await sdk.parse(input: trimmed);
-    final payRequest = lnurlPayRequestDetailsFor(parsed);
-
-    if (payRequest != null) {
-      if (amountSats == null) {
-        throw ArgumentError('amountSats é obrigatório para um endereço/link Lightning.');
-      }
-      final prepareResponse = await sdk.prepareLnurlPay(
-        request: PrepareLnurlPayRequest(amount: BigInt.from(amountSats), payRequest: payRequest),
-      );
-      final response = await sdk.lnurlPay(
-        request: LnurlPayRequest(prepareResponse: prepareResponse),
-      );
-      await _refreshBalance();
-      await _refreshPayments();
-      return response.payment;
-    }
-
-    final prepareResponse = await sdk.prepareSendPayment(
-      request: PrepareSendPaymentRequest(
-        paymentRequest: PaymentRequest.input(input: trimmed),
-        amount: amountSats != null ? BigInt.from(amountSats) : null,
-        feePolicy: feePolicy,
-      ),
+    await _waitForWalletSwitch();
+    return BreezPaymentClient(
+      gateway: BreezSdkPaymentGateway(_requireSdk),
+      createIdempotencyKey: _newIdempotencyKey,
+    ).prepare(
+      invoiceOrAddress,
+      amountSats: amountSats,
+      parsedInput: parsedInput,
+      feePolicy: feePolicy,
     );
-    final response = await sdk.sendPayment(
-      request: SendPaymentRequest(prepareResponse: prepareResponse),
-    );
+  }
+
+  Future<Payment> sendPreparedPayment(
+    BreezPreparedPayment prepared, {
+    OnchainConfirmationSpeed onchainSpeed = OnchainConfirmationSpeed.medium,
+  }) async {
+    await _waitForWalletSwitch();
+    final payment = await BreezPaymentClient(
+      gateway: BreezSdkPaymentGateway(_requireSdk),
+      createIdempotencyKey: _newIdempotencyKey,
+    ).send(prepared, onchainSpeed: onchainSpeed);
     await _refreshBalance();
     await _refreshPayments();
-    return response.payment;
+    return payment;
+  }
+
+  static String _newIdempotencyKey() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    return bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join();
   }
 
   Future<Map<String, double>> _fetchFiatRates() async {
-    try {
-      final response = await _requireSdk.listFiatRates();
-      return {for (final rate in response.rates) rate.coin: rate.value};
-    } catch (_) {
-      return const {};
+    final response = await _requireSdk.listFiatRates();
+    return {
+      for (final rate in response.rates)
+        rate.coin.trim().toUpperCase(): rate.value,
+    };
+  }
+
+  Future<void> _refreshFiatRates() async {
+    final rates = await _fetchFiatRates();
+    if (rates.isEmpty) {
+      throw StateError('A Breez retornou uma lista de cotações vazia.');
     }
+    _cachedFiatRates = Map.unmodifiable(rates);
+    _fiatRatesController.add(_cachedFiatRates);
   }
 
   /// Re-fetches every available BTC/fiat rate from the SDK's rate feed.
   Future<void> refreshFiatRates() async {
-    _cachedFiatRates = await _fetchFiatRates();
+    await initialize();
+    await _refreshFiatRates();
   }
 
   Future<String> getSelectedFiatCurrency() async =>
@@ -306,7 +548,8 @@ class BreezService {
     final existing = await _secureStorage.read(key: _mnemonicKey);
     if (existing != null && existing.isNotEmpty) return existing;
 
-    final mnemonic = bip39.generateMnemonic(strength: 128); // 128 bits -> 12 words
+    final mnemonic =
+        bip39.generateMnemonic(strength: 128); // 128 bits -> 12 words
     await _secureStorage.write(key: _mnemonicKey, value: mnemonic);
     return mnemonic;
   }
@@ -336,12 +579,14 @@ class BreezService {
 
   /// The pending mnemonic, if a previous NFC write hasn't been confirmed
   /// successful yet. Null once cleared.
-  Future<String?> getPendingEscapeMnemonic() => _secureStorage.read(key: _pendingEscapeMnemonicKey);
+  Future<String?> getPendingEscapeMnemonic() =>
+      _secureStorage.read(key: _pendingEscapeMnemonicKey);
 
   /// Clears the pending mnemonic. Call only once the NFC write has been
   /// confirmed successful — never on failure/timeout, since that's the
   /// only remaining signal that the tag doesn't yet match what's stored.
-  Future<void> clearPendingEscapeMnemonic() => _secureStorage.delete(key: _pendingEscapeMnemonicKey);
+  Future<void> clearPendingEscapeMnemonic() =>
+      _secureStorage.delete(key: _pendingEscapeMnemonicKey);
 
   /// Whether a fixed escape wallet has already been configured (see
   /// [createEscapeWallet]). Callers should confirm with the user before
@@ -359,7 +604,8 @@ class BreezService {
   /// real escape — entirely from local storage, never by reading the NFC
   /// tag, so a real escape never depends on the tag being physically
   /// present or readable.
-  Future<String?> getEscapeWalletMnemonic() => _secureStorage.read(key: _escapeWalletMnemonicKey);
+  Future<String?> getEscapeWalletMnemonic() =>
+      _secureStorage.read(key: _escapeWalletMnemonicKey);
 
   /// Generates a brand-new mnemonic and persists it as THE fixed escape
   /// wallet, overwriting any previous one. Doesn't connect to it or write
@@ -369,7 +615,8 @@ class BreezService {
   /// Callers must confirm with the user first if [hasEscapeWallet] is
   /// already true (see that method's doc comment).
   Future<String> createEscapeWallet() async {
-    final mnemonic = bip39.generateMnemonic(strength: 128); // 128 bits -> 12 words
+    final mnemonic =
+        bip39.generateMnemonic(strength: 128); // 128 bits -> 12 words
     await _secureStorage.write(key: _escapeWalletMnemonicKey, value: mnemonic);
     return mnemonic;
   }
@@ -382,9 +629,14 @@ class BreezService {
       throw ArgumentError('Frase de recuperação inválida.');
     }
 
-    await disconnect();
-    await _secureStorage.write(key: _mnemonicKey, value: trimmed);
-    await initialize();
+    final lock = await _acquireWalletSwitch();
+    try {
+      await disconnect();
+      await _secureStorage.write(key: _mnemonicKey, value: trimmed);
+      await _connectWithMnemonic(trimmed);
+    } finally {
+      _releaseWalletSwitch(lock);
+    }
   }
 
   /// Executes the "escape" fund sweep: sends this wallet's entire balance
@@ -432,35 +684,98 @@ class BreezService {
   /// wallet already has. That only works against an amount-less invoice —
   /// a fixed-amount one would reject receiving less than it demands, which
   /// is exactly what `feesIncluded` causes it to receive.
-  Future<void> executeEscapeSweep({required String escapeWalletMnemonic}) async {
-    final balance = await getBalance();
-    if (balance <= 0) return;
+  Future<void> executeEscapeSweep(
+      {required String escapeWalletMnemonic}) async {
+    final lock = await _acquireWalletSwitch();
+    try {
+      final balance = (await _requireSdk.getInfo(
+        request: const GetInfoRequest(ensureSynced: true),
+      ))
+          .balanceSats
+          .toInt();
+      if (balance <= 0) return;
+      final originalMnemonic = await _getOrCreateMnemonic();
+      await disconnect();
+      var reconnectedToOriginal = false;
+      try {
+        await _connectWithMnemonic(escapeWalletMnemonic);
 
-    final originalMnemonic = await _getOrCreateMnemonic();
+        // No amountSats: an "any amount" invoice, so paying it with
+        // FeePolicy.feesIncluded below can legitimately deliver less than the
+        // wallet's balance (balance minus the network fee).
+        final invoiceResponse = await _requireSdk.receivePayment(
+          request: ReceivePaymentRequest(
+            paymentMethod: ReceivePaymentMethod.bolt11Invoice(
+              description: 'Satra escape sweep',
+              amountSats: null,
+              expirySecs: 3600,
+              paymentHash: null,
+            ),
+          ),
+        );
+        await disconnect();
 
-    await disconnect();
-    await _connectWithMnemonic(escapeWalletMnemonic);
+        await _connectWithMnemonic(originalMnemonic);
+        reconnectedToOriginal = true;
 
-    // No amountSats: an "any amount" invoice, so paying it with
-    // FeePolicy.feesIncluded below can legitimately deliver less than the
-    // wallet's balance (balance minus the network fee).
-    final escapeWalletInvoice = await createInvoice(null, description: 'Satra escape sweep');
-    await disconnect();
-
-    await _connectWithMnemonic(originalMnemonic);
-
-    await sendPayment(
-      escapeWalletInvoice,
-      amountSats: balance,
-      feePolicy: FeePolicy.feesIncluded,
-    );
+        final prepareResponse = await _requireSdk.prepareSendPayment(
+          request: PrepareSendPaymentRequest(
+            paymentRequest:
+                PaymentRequest.input(input: invoiceResponse.paymentRequest),
+            amount: BigInt.from(balance),
+            feePolicy: FeePolicy.feesIncluded,
+          ),
+        );
+        final sent = await _requireSdk.sendPayment(
+          request: SendPaymentRequest(
+            prepareResponse: prepareResponse,
+            idempotencyKey: _newIdempotencyKey(),
+          ),
+        );
+        if (sent.payment.status != PaymentStatus.completed) {
+          throw StateError(
+            sent.payment.status == PaymentStatus.pending
+                ? 'O pagamento de escape está pendente; confira o histórico antes de tentar novamente.'
+                : 'O pagamento de escape falhou.',
+          );
+        }
+      } catch (e) {
+        // The SDK only supports one live connection at a time, and the escape
+        // sweep flips between two wallets. If anything fails before we
+        // reconnect to the original wallet, the singleton would otherwise stay
+        // pointed at the escape wallet — so the next session would silently
+        // operate on the wrong funds. For a wallet whose threat model is a
+        // partner who may seize the phone, that's an unacceptable state.
+        // Best-effort recovery back to the original wallet, then rethrow so
+        // the caller still sees the original failure.
+        if (!reconnectedToOriginal) {
+          debugPrint(
+              '[BreezService] executeEscapeSweep failed mid-sweep — recovering connection to the original wallet: $e');
+          try {
+            await disconnect();
+            await _connectWithMnemonic(originalMnemonic);
+          } catch (recoveryError) {
+            debugPrint(
+                '[BreezService] executeEscapeSweep recovery ALSO failed — wallet connection is in an inconsistent state: $recoveryError');
+          }
+        }
+        rethrow;
+      }
+    } finally {
+      _releaseWalletSwitch(lock);
+    }
   }
 
   Future<void> disconnect() async {
-    await _eventSubscription?.cancel();
+    final subscription = _eventSubscription;
+    final sdk = _sdk;
     _eventSubscription = null;
-    await _sdk?.disconnect();
     _sdk = null;
     _initializing = null;
+    try {
+      await subscription?.cancel();
+    } finally {
+      await sdk?.disconnect();
+    }
   }
 }
