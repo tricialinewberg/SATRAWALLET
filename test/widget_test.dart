@@ -155,7 +155,7 @@ void main() {
     final context = tester.element(find.byType(CalculatorScreen));
     Navigator.of(context).pushNamed(SatraRoutes.inheritancePassword);
     await tester.pumpAndSettle();
-    expect(find.text('Senha de liberação'), findsOneWidget);
+    expect(find.text('SENHA DE LIBERAÇÃO'), findsOneWidget);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -166,7 +166,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CalculatorScreen), findsNothing);
-    expect(find.text('Senha de liberação'), findsOneWidget);
+    expect(find.text('SENHA DE LIBERAÇÃO'), findsOneWidget);
   });
 
   testWidgets('locks immediately when that timeout is selected',
@@ -193,6 +193,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CalculatorScreen), findsOneWidget);
-    expect(find.text('Senha de liberação'), findsNothing);
+    expect(find.text('SENHA DE LIBERAÇÃO'), findsNothing);
   });
 }
