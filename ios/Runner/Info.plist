@@ -30,6 +30,8 @@
 	<string>Satra Wallet usa NFC para ler e gravar a chave física de recuperação da carteira.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Satra Wallet usa a câmera para ler QR Codes de pagamentos.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Satra Wallet usa o Face ID como opção para desbloquear sua carteira.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
