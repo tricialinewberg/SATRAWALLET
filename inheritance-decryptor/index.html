@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Satra · Decifrar herança</title>
+  <style>
+    :root {
+      --navy: #0B2545;
+      --medium: #1B4F8C;
+      --light: #A9D6E5;
+      --bg: #F4F8FB;
+      --danger: #b3261e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--navy);
+      -webkit-text-size-adjust: 100%;
+    }
+    header {
+      background: var(--navy);
+      color: #fff;
+      padding: 16px 20px;
+    }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    header p { margin: 4px 0 0; font-size: 12px; opacity: 0.7; }
+    main {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 20px 18px 60px;
+    }
+    h2 { font-size: 17px; margin: 0 0 6px; }
+    p.help { font-size: 13px; line-height: 1.5; color: rgba(11,37,69,0.85); margin: 0 0 18px; }
+    label { display:block; font-size: 13px; font-weight: 600; margin: 14px 0 6px; }
+    textarea, input {
+      width: 100%;
+      font: inherit;
+      padding: 12px;
+      border: 1px solid #c8d3df;
+      border-radius: 8px;
+      background: #fff;
+      color: var(--navy);
+    }
+    textarea { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; min-height: 120px; resize: vertical; }
+    input[type=password] { letter-spacing: 0.1em; }
+    textarea:focus, input:focus { outline: none; border-color: var(--medium); box-shadow: 0 0 0 2px rgba(27,79,140,0.15); }
+    .row { display:flex; gap:10px; align-items:center; }
+    .row input[type=password] { flex: 1; }
+    button.toggle { padding: 12px; border: 1px solid #c8d3df; border-radius: 8px; background:#fff; cursor: pointer; color: var(--medium); }
+    button.decrypt {
+      width: 100%;
+      margin-top: 18px;
+      padding: 14px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--medium);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    button.decrypt:disabled { opacity: 0.5; cursor: default; }
+    #error { color: var(--danger); font-size: 13px; margin-top: 12px; min-height: 1em; }
+    #result { display: none; margin-top: 22px; padding: 16px; background: #fff; border: 1px solid var(--light); border-radius: 12px; }
+    #result h3 { margin: 0 0 10px; font-size: 14px; }
+    #seed { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 15px; line-height: 1.6; letter-spacing: 0.04em; word-break: break-all; }
+    .actions { display:flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .actions button { padding: 8px 14px; border: 1px solid var(--light); border-radius: 8px; background: #fff; color: var(--medium); cursor: pointer; font: inherit; }
+    footer { margin-top: 36px; font-size: 11px; line-height: 1.5; color: rgba(11,37,69,0.6); text-align: center; }
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -3px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Satra · Decifrar herança</h1>
+    <p>Recuperação independente — não precisa instalar o app Satra</p>
+  </header>
+
+  <main>
+    <h2>Recuperar a frase de recuperação</h2>
+    <p class="help">
+      Use esta página se você foi indicado como herdeiro de uma Satra Wallet e
+      já recebeu o envelope cifrado via Nostr. Cole o envelope abaixo e digite
+      a senha combinada em vida com o titular para revelar a frase de
+      recuperação da carteira. Tudo acontece no seu navegador — nada é enviado
+      pela internet.
+    </p>
+
+    <label for="envelope">Envelope cifrado</label>
+    <textarea id="envelope" placeholder='{"version":1,"walletType":"breez-spark",...}' spellcheck="false" autocomplete="off"></textarea>
+
+    <label for="password">Senha de liberação</label>
+    <div class="row">
+      <input id="password" type="password" autocomplete="off" spellcheck="false" />
+      <button class="toggle" id="togglePw" type="button" aria-label="Mostrar senha">👁</button>
+    </div>
+
+    <button class="decrypt" id="decrypt" type="button">Decifrar</button>
+    <div id="error"></div>
+
+    <div id="result">
+      <h3>🔒 Frase de recuperação</h3>
+      <div id="seed">•••• •••• •••• •••• •••• •••• •••• •••• •••• •••• •••• ••••</div>
+      <div class="actions">
+        <button id="reveal" type="button">Revelar</button>
+        <button id="copy" type="button">Copiar</button>
+      </div>
+      <p class="help" style="margin-top:14px">
+        Guarde esta frase com segurança. Restaure a carteira em um app Satra
+        novo usando “Traga sua carteira” → “Restaurar com seed”.
+      </p>
+    </div>
+
+    <footer>
+      A decifração roda 100% no seu navegador (Argon2id + AES-256-GCM), no
+      mesmo formato da chave física NFC do app Satra. Código aberto —
+      audite em github.com/tricialinewberg/SATRAWALLET.
+    </footer>
+  </main>
+
+  <!-- argon2-browser (WASM), self-hosted so the decryptor works even if a
+       third-party CDN goes down. The heir's ability to decrypt must not
+       depend on jsdelivr or any other external service. -->
+  <script src="argon2-bundled.min.js"></script>
+
+  <script>
+    // Mirror of lib/services/nfc_credential_crypto.dart in pure JS, so the
+    // inheritance vault can be decrypted without the Satra app. Keep these
+    // constants in sync with NfcCredentialCrypto if that file ever changes.
+    const CURRENT_VERSION = 1;
+    const WALLET_TYPE = 'breez-spark';
+    const NETWORK = 'mainnet';
+    const KDF_NAME = 'argon2id';
+    const DEFAULT_KDF_MEMORY = 19456; // KiB (~19 MiB)
+    const DEFAULT_KDF_ITERATIONS = 3;
+    const DEFAULT_KDF_PARALLELISM = 1;
+    const KEY_LENGTH = 32; // AES-256
+    const MAC_LENGTH = 16; // AES-GCM auth tag
+
+    const $ = (id) => document.getElementById(id);
+    let revealed = false;
+    let decryptedSeed = null;
+
+    $('togglePw').addEventListener('click', () => {
+      const p = $('password');
+      p.type = p.type === 'password' ? 'text' : 'password';
+    });
+
+    function b64ToBytes(b64) {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    }
+
+    function decodeEnvelope(raw) {
+      const text = raw.trim();
+      if (!text) throw new Error('Cole o envelope cifrado recebido via Nostr.');
+      let map;
+      try { map = JSON.parse(text); }
+      catch { throw new Error('Envelope inválido: não é JSON válido.'); }
+      if (map.version !== CURRENT_VERSION) throw new Error('Versão do envelope não suportada.');
+      if (map.walletType !== WALLET_TYPE) throw new Error('Envelope não é de uma Satra Wallet.');
+      if (map.network !== NETWORK) throw new Error('Rede do envelope não reconhecida.');
+      if (map.kdf !== KDF_NAME) throw new Error('Algoritmo de derivação não suportado.');
+      if (typeof map.salt !== 'string' || typeof map.nonce !== 'string' || typeof map.ciphertext !== 'string')
+        throw new Error('Envelope malformado.');
+      return map;
+    }
+
+    async function deriveKey(password, salt, memory, iterations, parallelism) {
+      // argon2-browser exposes the `argon2` global after the script loads.
+      if (typeof argon2 === 'undefined')
+        throw new Error('Biblioteca Argon2 ainda carregando. Tente novamente em instantes.');
+      const hash = await argon2.hash({
+        hashType: argon2.ArgonType.Argon2id,
+        pass: password,
+        salt,
+        time: iterations,
+        mem: memory,
+        parallelism,
+        hashLen: KEY_LENGTH,
+      });
+      // hash.hash is an ArrayBuffer/TypedArray — WebCrypto wants a Uint8Array.
+      return new Uint8Array(hash.hash);
+    }
+
+    async function decrypt() {
+      $('error').textContent = '';
+      $('result').style.display = 'none';
+      const btn = $('decrypt');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Decifrando...';
+      try {
+        const map = decodeEnvelope($('envelope').value);
+        const password = $('password').value;
+        if (!password) throw new Error('Digite a senha de liberação.');
+
+        const salt = b64ToBytes(map.salt);
+        const nonce = b64ToBytes(map.nonce);
+        const ctWithTag = b64ToBytes(map.ciphertext);
+        if (ctWithTag.length < MAC_LENGTH) throw new Error('Envelope corrompido.');
+
+        const memory = map.kdfMemory ?? DEFAULT_KDF_MEMORY;
+        const iterations = map.kdfIterations ?? DEFAULT_KDF_ITERATIONS;
+        const parallelism = map.kdfParallelism ?? DEFAULT_KDF_PARALLELISM;
+
+        const keyBytes = await deriveKey(password, salt, memory, iterations, parallelism);
+
+        const cryptoKey = await crypto.subtle.importKey(
+          'raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+
+        const split = ctWithTag.length - MAC_LENGTH;
+        const ciphertext = ctWithTag.subarray(0, split);
+        const tag = ctWithTag.subarray(split);
+
+        // WebCrypto AES-GCM expects the tag appended to the ciphertext.
+        const combined = new Uint8Array(split + MAC_LENGTH);
+        combined.set(ciphertext, 0);
+        combined.set(tag, split);
+
+        const plainBuf = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: nonce, tagLength: MAC_LENGTH * 8 },
+          cryptoKey,
+          combined,
+        );
+
+        const seed = new TextDecoder().decode(plainBuf);
+        decryptedSeed = seed;
+        revealed = false;
+        $('seed').textContent = maskSeed(seed);
+        $('result').style.display = 'block';
+        $('reveal').textContent = 'Revelar';
+      } catch (e) {
+        const msg = e && e.message ? e.message : String(e);
+        // A wrong password surfaces as a GCM auth failure — keep it generic
+        // so a wrong-password guess can't be told apart from corrupted data,
+        // mirroring the Dart side's NfcCredentialException contract.
+        if (/auth|tag|decrypt|MAC|invalid/i.test(msg)) {
+          $('error').textContent = 'Não foi possível decifrar. Verifique a senha e o envelope.';
+        } else {
+          $('error').textContent = msg;
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Decifrar';
+      }
+    }
+
+    function maskSeed(seed) {
+      const words = seed.split(/\s+/).filter(Boolean);
+      return words.map(() => '••••').join('  ');
+    }
+
+    $('decrypt').addEventListener('click', decrypt);
+    $('reveal').addEventListener('click', () => {
+      if (!decryptedSeed) return;
+      revealed = !revealed;
+      $('seed').textContent = revealed ? decryptedSeed : maskSeed(decryptedSeed);
+      $('reveal').textContent = revealed ? 'Ocultar' : 'Revelar';
+    });
+    $('copy').addEventListener('click', async () => {
+      if (!decryptedSeed) return;
+      try {
+        await navigator.clipboard.writeText(decryptedSeed);
+        $('copy').textContent = 'Copiado!';
+        setTimeout(() => $('copy').textContent = 'Copiar', 1500);
+      } catch { /* clipboard blocked — user can reveal and select manually */ }
+    });
+
+    // Enter on the password field triggers decrypt, for one-handed use.
+    $('password').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); decrypt(); }
+    });
+  </script>
+</body>
+</html>
