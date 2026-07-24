@@ -21,7 +21,10 @@ O ponto em comum é ausência de **autonomia** sobre a própria renda.
 # Fluxo de uso completo:
 ### Onboarding (primeiro acesso)
 App instalado, estado "virgem" (sem PIN configurado). Uma sequência-mestra fixa digitada nesse estado abre, uma única vez, um modo de configuração. Nesse modo, a usuária define seu PIN pessoal (tipo 3221=). Depois de definido, a sequência-mestra deixa de funcionar ( não pode mais reabrir a configuração.)
-Uso do dia a dia
+
+**Código de acesso:** `21 + =` (número 21 seguido do botão de igual da calculadora)
+
+### Uso do dia a dia
 
 App abre sempre como calculadora funcional de verdade. Digitar o PIN pessoal + = troca a tela pra UI real da carteira, mostrando saldo em sats, opção de receber e enviar. O PIN é o único método de acesso no dia a dia.
 
@@ -53,9 +56,11 @@ Lightning Address: usado pra receber pagamentos de forma simples (formato tipo a
 
 Identidade Nostr: derivada deterministicamente da mesma seed da carteira Bitcoin (padrão NIP-06) – restaurar a carteira (por seed ou pela chave física) também restaura a mesma identidade Nostr e recupera a rede de confiança automaticamente.
 
+Conversor de chaves (NIP-19): a carteira é convertida para chave Nostr portável usando o padrão NIP-19, permitindo portabilidade e interoperabilidade com outros clientes Nostr.
+
 Nostr – canal de socorro: alerta de escape enviado via DM criptografada usando NIP-17 (protege inclusive metadados, ao contrário do NIP-04), publicado em paralelo em múltiplos relays.
 
-Rede de confiança: sincronizada entre dispositivos via evento criptografado (NIP-44) publicado nos relays, não fica presa só ao armazenamento local do celular.
+Rede de confiança: sincronizada entre dispositivos via evento criptografado (NIP-44) publicado nos relays, não fica presa só ao armazenamento local do celular. Backup do cofre de contatos sincronizado e criptografado em relays via NIP-78.
 
 NFC: chip NTAG regravável, guardando um envelope criptografado (Argon2id + AES-256-GCM) com a credencial de acesso – nunca a seed em texto puro. Escrita verificada com um ciclo de escrever → reler → validar antes de confirmar sucesso.
 # Identidade Visual
@@ -116,3 +121,54 @@ Critério geral: transmitir confiança e transparência (associação com azul),
 ### Recuperação
 
 ![Transferência via NFC](assets/screens/TRANFERIR%20CHAVE%20FÍSICA%20PARA%20CARTEIRA.png)
+
+# Como rodar
+
+## Configuração do ambiente
+
+1. Clone o repositório:
+```bash
+git clone <repository-url>
+cd SATRAWALLET
+```
+
+2. Configure as variáveis de ambiente no arquivo `.env` na raiz do projeto:
+```
+# Exemplo de .env
+BREEZ_API_KEY=your_key_here
+RELAY_URLS=wss://relay1.example.com,wss://relay2.example.com
+```
+
+3. Instale as dependências Flutter:
+```bash
+flutter pub get
+```
+
+4. Execute o aplicativo:
+```bash
+# Debug
+flutter run
+
+# Release (APK)
+flutter build apk --release
+```
+
+## Apresentação do projeto
+
+A apresentação do pitch está disponível em:
+- **Local:** `apresentacao/satra-pitch.html`
+- **Como acessar:** Baixe todos os arquivos do repositório e abra `satra-pitch.html` em um navegador web
+- **Link online:** Disponível via GitHub Pages ou jsDelivr (veja configuração do repositório)
+
+## Demo do aplicativo
+
+Para visualizar a demo do aplicativo:
+- **Local:** `apresentacao/demo` (arquivo APK)
+- **Como instalar:** Transfira o APK para seu dispositivo Android e instale
+- **Requisitos:** Android 6.0 ou superior com suporte a NFC
+
+## SDK e Recursos
+
+Acesse os arquivos do SDK e recursos para testes:
+- **[hack4freedom — SDK e Arquivos de Teste](https://1drv.ms/f/c/6e39028b5e01813a/IgCpXdsSQWASSb-gXhyG_1b6AbBm0f2hOFVWzP_zXTvsCSU)**
+  - Contém APK, protótipos de vídeo, imagens de interface e recursos para desenvolvimento
