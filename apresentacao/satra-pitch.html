@@ -126,6 +126,21 @@
   }
 
   /* =========================================================
+     SLIDE 0 — HACK4FREEDOM
+  ========================================================= */
+  #slide-hack4freedom{
+    background: linear-gradient(135deg, rgba(27,79,140,0.5) 0%, rgba(11,37,69,0.8) 100%);
+  }
+  .hack4freedom-title{
+    font-family:var(--display);
+    font-weight:600;
+    font-size:clamp(72px, 12vw, 144px);
+    letter-spacing:0.04em;
+    color:var(--ice);
+    text-transform:uppercase;
+  }
+
+  /* =========================================================
      SLIDE 1 — Manchetes
   ========================================================= */
   #slide-headlines{ padding:0; }
@@ -730,10 +745,10 @@
 
 <div class="deck" id="deck">
 
-  <!-- 2 — LOGO -->
-  <section class="slide" id="slide-logo">
-    <div class="logo-wrap">
-      <img src="recursos/logo.png" alt="Satra" class="logo-mark" style="width:auto; height:160px; border-radius:0;">
+  <!-- 0 — HACK4FREEDOM -->
+  <section class="slide" id="slide-hack4freedom">
+    <div class="enter">
+      <div class="hack4freedom-title">HACK4FREEDOM</div>
     </div>
   </section>
 
@@ -795,6 +810,13 @@
       <div class="thesis" id="thesis">
         <p id="thesis-text"></p>
       </div>
+    </div>
+  </section>
+
+  <!-- 2 — LOGO -->
+  <section class="slide" id="slide-logo">
+    <div class="logo-wrap">
+      <img src="recursos/logo.png" alt="Satra" class="logo-mark" style="width:auto; height:160px; border-radius:0;">
     </div>
   </section>
 
