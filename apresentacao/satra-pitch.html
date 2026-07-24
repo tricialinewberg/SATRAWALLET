@@ -730,6 +730,13 @@
 
 <div class="deck" id="deck">
 
+  <!-- 2 — LOGO -->
+  <section class="slide" id="slide-logo">
+    <div class="logo-wrap">
+      <img src="recursos/logo.png" alt="Satra" class="logo-mark" style="width:auto; height:160px; border-radius:0;">
+    </div>
+  </section>
+
   <!-- 1 — MANCHETES -->
   <section class="slide" id="slide-headlines">
     <div class="headlines-stage">
@@ -788,13 +795,6 @@
       <div class="thesis" id="thesis">
         <p id="thesis-text"></p>
       </div>
-    </div>
-  </section>
-
-  <!-- 2 — LOGO -->
-  <section class="slide" id="slide-logo">
-    <div class="logo-wrap">
-      <img src="recursos/logo.png" alt="Satra" class="logo-mark" style="width:auto; height:160px; border-radius:0;">
     </div>
   </section>
 
@@ -1116,7 +1116,7 @@
   function playHeadlines(){
     resetHeadlines();
     const clippings = document.querySelectorAll('.clipping');
-    const stepMs = 1600;
+    const stepMs = 4000;
 
     clippings.forEach((c, i) => {
       headlineTimers.push(setTimeout(() => {
