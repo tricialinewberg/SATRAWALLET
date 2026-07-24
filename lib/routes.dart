@@ -3,7 +3,6 @@ class SatraRoutes {
   SatraRoutes._();
 
   static const calculator = '/';
-  static const splash = '/splash';
   static const pinSetup = '/pin-setup';
   static const walletHome = '/wallet-home';
   static const receive = '/wallet-home/receive';
@@ -15,4 +14,11 @@ class SatraRoutes {
   static const pendingEscapeRecovery = '/wallet-home/pending-escape-recovery';
   static const nfcKeyPasswordSetup = '/wallet-home/nfc-key-password';
   static const inheritance = '/wallet-home/inheritance';
+  static const inheritanceHeirs = '/wallet-home/inheritance/heirs';
+  static const inheritancePassword = '/wallet-home/inheritance/password';
+  static const inheritancePeriods = '/wallet-home/inheritance/periods';
+  static const inheritanceMessageTest = '/wallet-home/inheritance/message-test';
+  static const inheritanceClaim = '/inheritance-claim';
+  static const support = '/wallet-home/support';
+  static const settings = '/wallet-home/settings';
 }
