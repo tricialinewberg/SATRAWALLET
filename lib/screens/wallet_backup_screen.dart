@@ -138,20 +138,20 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFFDECEC),
+                color: SatraColors.errorBg,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFF3B9B9)),
+                border: Border.all(color: SatraColors.errorBorder),
               ),
               child: const Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.warning_rounded, color: Color(0xFFD64545), size: 20),
+                  Icon(Icons.warning_rounded, color: SatraColors.error, size: 20),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'Quem tiver essas 12 palavras tem acesso total ao seu saldo. '
                       'Nunca fotografe, envie por mensagem ou mostre pra ninguém.',
-                      style: TextStyle(color: Color(0xFF7A1F1F), fontSize: 13, height: 1.3),
+                      style: TextStyle(color: SatraColors.errorDark, fontSize: 13, height: 1.3),
                     ),
                   ),
                 ],
@@ -286,7 +286,7 @@ class _WalletBackupScreenState extends State<WalletBackupScreen> {
               child: ElevatedButton(
                 onPressed: _restoring ? null : _restore,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD64545),
+                  backgroundColor: SatraColors.error,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
                 ),

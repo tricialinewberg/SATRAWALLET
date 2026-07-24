@@ -241,7 +241,7 @@ class _NfcKeyPasswordSetupScreenState extends State<NfcKeyPasswordSetupScreen> {
                   _resultLabel(_writeResult!),
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: _writeResult == NfcWriteResult.success ? const Color(0xFF3FBF6F) : const Color(0xFFD64545),
+                    color: _writeResult == NfcWriteResult.success ? SatraColors.success : SatraColors.error,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

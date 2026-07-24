@@ -7,7 +7,9 @@ import '../theme/colors.dart';
 /// One-time initial setup screen where the user defines her personal PIN.
 /// Reused later from the side menu for "Trocar PIN" (change PIN).
 class PinSetupScreen extends StatefulWidget {
-  const PinSetupScreen({super.key});
+  const PinSetupScreen({super.key, this.changing = false});
+
+  final bool changing;
 
   @override
   State<PinSetupScreen> createState() => _PinSetupScreenState();
@@ -46,45 +48,88 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final isComplete = _pin.length == _pinLength;
+    final title = widget.changing ? 'Trocar PIN' : 'Crie seu PIN';
+    final eyebrow = widget.changing ? 'SEGURANÇA DA CARTEIRA' : 'PRIMEIRO ACESSO';
+    final subtitle = widget.changing
+        ? 'Escolha um novo PIN de quatro dígitos para abrir sua carteira.'
+        : 'Escolha um PIN de quatro dígitos para abrir sua carteira pela calculadora.';
 
     return Scaffold(
       backgroundColor: SatraColors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'CONFIGURAÇÃO INICIAL',
+              Row(
+                children: [
+                  if (widget.changing)
+                    IconButton(
+                      tooltip: 'Voltar',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back),
+                      color: SatraColors.navy,
+                    )
+                  else
+                    const SizedBox(width: 48),
+                  const Spacer(),
+                  Icon(Icons.lock_outline_rounded,
+                      color: SatraColors.medium, size: 22),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                eyebrow,
                 style: TextStyle(
                   color: SatraColors.medium,
                   fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  letterSpacing: 0.5,
+                  fontSize: 11,
+                  letterSpacing: 0.7,
                 ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Defina seu PIN',
+              const SizedBox(height: 6),
+              Text(
+                title,
                 style: TextStyle(
                   color: SatraColors.navy,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 27,
+                  letterSpacing: -.2,
                   height: 1.1,
                 ),
               ),
-              const SizedBox(height: 20),
-              _WarningCard(
-                title: 'Não conte pra ninguém',
-                message: 'Esse PIN é só seu. Nunca compartilhe, nem com pessoas de confiança.',
+              const SizedBox(height: 8),
+              Text(subtitle,
+                  style: const TextStyle(
+                      color: SatraColors.medium, fontSize: 14, height: 1.35)),
+              const SizedBox(height: 22),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: SatraColors.light),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.visibility_off_outlined,
+                        color: SatraColors.medium, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        widget.changing
+                            ? 'O PIN antigo continua válido até você confirmar o novo.'
+                            : 'Não compartilhe seu PIN. Ele nunca sai deste aparelho.',
+                        style: const TextStyle(
+                            color: SatraColors.navy, fontSize: 12, height: 1.3),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              _WarningCard(
-                title: 'Evite sequências óbvias',
-                message: 'Nada de datas óbvias. Você vai usar esse PIN toda vez que acessar a carteira.',
-              ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: List.generate(_pinLength, (index) {
@@ -100,63 +145,32 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
-                height: 56,
+                height: 52,
                 child: ElevatedButton(
                   onPressed: isComplete ? _confirm : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: SatraColors.navy,
-                    disabledBackgroundColor: SatraColors.navy.withValues(alpha: 0.4),
+                    disabledBackgroundColor:
+                        SatraColors.navy.withValues(alpha: 0.4),
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
                   ),
                   child: _saving
                       ? const SizedBox(
                           width: 22,
                           height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Confirmar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      : const Text('Confirmar',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _WarningCard extends StatelessWidget {
-  final String title;
-  final String message;
-
-  const _WarningCard({required this.title, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFDECEC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFF3B9B9)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.warning_rounded, color: Color(0xFFD64545), size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A1F1F))),
-                const SizedBox(height: 4),
-                Text(message, style: const TextStyle(color: Color(0xFF7A1F1F), fontSize: 13, height: 1.3)),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -171,12 +185,12 @@ class _PinBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 68,
-      height: 68,
+      width: 62,
+      height: 62,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: active || digit != null ? SatraColors.navy : SatraColors.light,
           width: active ? 2 : 1,
@@ -184,7 +198,8 @@ class _PinBox extends StatelessWidget {
       ),
       child: Text(
         digit ?? '',
-        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: SatraColors.navy),
+        style: const TextStyle(
+            fontSize: 23, fontWeight: FontWeight.w800, color: SatraColors.navy),
       ),
     );
   }
@@ -208,16 +223,18 @@ class _Keypad extends StatelessWidget {
       children: [
         for (final row in rows)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: row.map((d) => _KeypadButton(label: d, onTap: () => onDigit(d))).toList(),
+              children: row
+                  .map((d) => _KeypadButton(label: d, onTap: () => onDigit(d)))
+                  .toList(),
             ),
           ),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const SizedBox(width: 96, height: 56),
+            const SizedBox(width: 84, height: 52),
             _KeypadButton(label: '0', onTap: () => onDigit('0')),
             _KeypadButton(icon: Icons.backspace_outlined, onTap: onBackspace),
           ],
@@ -238,23 +255,26 @@ class _KeypadButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          width: 96,
-          height: 56,
+          width: 84,
+          height: 52,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: SatraColors.light),
           ),
           child: icon != null
               ? Icon(icon, color: SatraColors.navy)
               : Text(
                   label!,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: SatraColors.navy),
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: SatraColors.navy),
                 ),
         ),
       ),
