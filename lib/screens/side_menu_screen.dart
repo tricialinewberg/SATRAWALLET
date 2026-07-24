@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../routes.dart';
+import '../services/biometric_service.dart';
 import '../services/breez_service.dart';
 import '../theme/colors.dart';
 
@@ -41,12 +42,18 @@ class SideMenuScreen extends StatelessWidget {
                           children: [
                             Text(
                               'LIGHTNING ADDRESS',
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11, letterSpacing: 0.5),
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  fontSize: 11,
+                                  letterSpacing: 0.5),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               address ?? '···',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15),
                             ),
                           ],
                         ),
@@ -54,14 +61,17 @@ class SideMenuScreen extends StatelessWidget {
                       if (address != null)
                         GestureDetector(
                           onTap: () async {
-                            await Clipboard.setData(ClipboardData(text: address));
+                            await Clipboard.setData(
+                                ClipboardData(text: address));
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Endereço copiado')),
+                                const SnackBar(
+                                    content: Text('Endereço copiado')),
                               );
                             }
                           },
-                          child: const Icon(Icons.copy_outlined, color: Colors.white70, size: 18),
+                          child: const Icon(Icons.copy_outlined,
+                              color: Colors.white70, size: 18),
                         ),
                     ],
                   );
@@ -73,14 +83,16 @@ class SideMenuScreen extends StatelessWidget {
             FutureBuilder<String?>(
               future: BreezService.instance.getPendingEscapeMnemonic(),
               builder: (context, snapshot) {
-                final hasPending = snapshot.data != null && snapshot.data!.isNotEmpty;
+                final hasPending =
+                    snapshot.data != null && snapshot.data!.isNotEmpty;
                 if (!hasPending) return const SizedBox.shrink();
                 return _MenuTile(
                   icon: Icons.warning_amber_rounded,
                   label: 'Concluir gravação pendente',
                   onTap: () {
                     Navigator.of(context).pop();
-                    Navigator.of(context).pushNamed(SatraRoutes.pendingEscapeRecovery);
+                    Navigator.of(context)
+                        .pushNamed(SatraRoutes.pendingEscapeRecovery);
                   },
                 );
               },
@@ -110,11 +122,36 @@ class SideMenuScreen extends StatelessWidget {
               },
             ),
             _MenuTile(
+              icon: Icons.lock_open_outlined,
+              label: 'Decifrar herança',
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pushNamed(SatraRoutes.inheritanceClaim);
+              },
+            ),
+            _MenuTile(
               icon: Icons.lock_outline,
               label: 'Trocar PIN',
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(context).pushNamed(SatraRoutes.pinSetup);
+                Navigator.of(context).pushNamed(
+                  SatraRoutes.pinSetup,
+                  arguments: true,
+                );
+              },
+            ),
+            FutureBuilder<bool>(
+              future: BiometricService().isEnabled(),
+              builder: (context, snapshot) {
+                final enabled = snapshot.data ?? false;
+                return _MenuTile(
+                  icon: Icons.fingerprint,
+                  label: enabled ? 'Biometria ativada' : 'Ativar biometria',
+                  onTap: () => _configureBiometrics(
+                    context,
+                    currentlyEnabled: enabled,
+                  ),
+                );
               },
             ),
             _MenuTile(
@@ -122,12 +159,31 @@ class SideMenuScreen extends StatelessWidget {
               label: 'Senha da chave física',
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(context).pushNamed(SatraRoutes.nfcKeyPasswordSetup);
+                Navigator.of(context)
+                    .pushNamed(SatraRoutes.nfcKeyPasswordSetup);
               },
             ),
-            _MenuTile(icon: Icons.headset_mic_outlined, label: 'Support', onTap: () => Navigator.of(context).pop()),
-            _MenuTile(icon: Icons.info_outline, label: 'Sobre o app', onTap: () => Navigator.of(context).pop()),
-            _MenuTile(icon: Icons.settings_outlined, label: 'Configurações', onTap: () => Navigator.of(context).pop()),
+            _MenuTile(
+                icon: Icons.headset_mic_outlined,
+                label: 'Suporte',
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).pushNamed(SatraRoutes.support);
+                }),
+            _MenuTile(
+                icon: Icons.info_outline,
+                label: 'Sobre o app',
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).pushNamed(SatraRoutes.support);
+                }),
+            _MenuTile(
+                icon: Icons.settings_outlined,
+                label: 'Configurações',
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).pushNamed(SatraRoutes.settings);
+                }),
             const Spacer(),
             Padding(
               padding: const EdgeInsets.only(bottom: 20),
@@ -136,7 +192,11 @@ class SideMenuScreen extends StatelessWidget {
                 children: [
                   const Icon(Icons.bolt, color: Colors.white54, size: 18),
                   const SizedBox(width: 6),
-                  Text('SATRA', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontWeight: FontWeight.bold, letterSpacing: 1)),
+                  Text('SATRA',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1)),
                 ],
               ),
             ),
@@ -145,6 +205,75 @@ class SideMenuScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _configureBiometrics(
+  BuildContext context, {
+  required bool currentlyEnabled,
+}) async {
+  final service = BiometricService();
+
+  if (currentlyEnabled) {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Desativar biometria?'),
+        content: const Text(
+          'O desbloqueio continuará disponível pelo seu PIN.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Desativar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await service.disable();
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Biometria desativada.')),
+    );
+    return;
+  }
+
+  final enabled = await service.enable();
+  if (!context.mounted) return;
+  if (!enabled) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Não foi possível ativar. Cadastre uma biometria no aparelho e tente novamente.',
+        ),
+      ),
+    );
+    return;
+  }
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Biometria ativada'),
+      content: const Text(
+        'Na calculadora, segure o botão “=” para abrir a carteira com sua biometria. '
+        'Seu PIN continua funcionando normalmente.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Entendi'),
+        ),
+      ],
+    ),
+  );
+  if (context.mounted) Navigator.of(context).pop();
 }
 
 /// Lets the user pick how they want to restore/view their wallet: typing in
@@ -168,14 +297,18 @@ void _showRestoreChooser(BuildContext context) {
               child: Text(
                 'Como você quer trazer sua carteira?',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, color: SatraColors.navy, fontSize: 16),
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: SatraColors.navy,
+                    fontSize: 16),
               ),
             ),
             ListTile(
               leading: const Icon(Icons.key_outlined, color: SatraColors.navy),
               title: const Text(
                 'Restaurar com seed',
-                style: TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: SatraColors.navy, fontWeight: FontWeight.w600),
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
@@ -186,7 +319,8 @@ void _showRestoreChooser(BuildContext context) {
               leading: const Icon(Icons.nfc, color: SatraColors.navy),
               title: const Text(
                 'Restaurar com chave física',
-                style: TextStyle(color: SatraColors.navy, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: SatraColors.navy, fontWeight: FontWeight.w600),
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
@@ -205,13 +339,16 @@ class _MenuTile extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _MenuTile({required this.icon, required this.label, required this.onTap});
+  const _MenuTile(
+      {required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
       leading: Icon(icon, color: Colors.white, size: 22),
-      title: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+      title: Text(label,
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w500)),
       onTap: onTap,
     );
   }
