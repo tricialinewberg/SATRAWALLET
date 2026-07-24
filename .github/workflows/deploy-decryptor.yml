@@ -1,0 +1,43 @@
+name: Deploy Decryptor
+
+# Deploys the static inheritance decryptor (inheritance-decryptor/) to
+# GitHub Pages so heirs can decrypt the vault in any browser — no app
+# install required. Only triggers when the decryptor files change.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'inheritance-decryptor/**'
+      - '.github/workflows/deploy-decryptor.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'inheritance-decryptor'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,4 +1,4 @@
-name: Build APK
+name: CI
 
 on:
   workflow_dispatch:
@@ -6,11 +6,45 @@ on:
     branches:
       - main
       - master
+  pull_request:
+    branches:
+      - main
+      - master
 
 jobs:
-  build:
+  # Fast feedback: analyze + test on every PR and push. Doesn't need Rust
+  # (the native Breez SDK only matters for the APK build), so this finishes
+  # in ~2-3 minutes instead of 15.
+  test:
+    name: Analyze & Test
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
 
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create test environment
+        run: |
+          printf '{"BREEZ_API_KEY":""}\n' > config.json
+
+      - run: flutter pub get
+
+      - name: Analyze code
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+  # Full APK build — only on merge to main/master (not on PRs), since it
+  # needs the Rust toolchain for the native Breez SDK and takes ~15 min.
+  build:
+    name: Build APK
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
@@ -29,6 +63,16 @@ jobs:
           rustup target add x86_64-linux-android
           rustup target add i686-linux-android
 
+      - name: Create runtime environment
+        env:
+          BREEZ_API_KEY: ${{ secrets.BREEZ_API_KEY }}
+        run: |
+          if [ -z "$BREEZ_API_KEY" ]; then
+            echo "::error::Configure the BREEZ_API_KEY repository secret."
+            exit 1
+          fi
+          printf '{"BREEZ_API_KEY":"%s"}\n' "$BREEZ_API_KEY" > config.json
+
       - name: Cache Cargo registry
         uses: actions/cache@v4
         with:
@@ -40,10 +84,8 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Create .env file
-        run: echo "BREEZ_API_KEY=${{ secrets.BREEZ_API_KEY }}" > .env
-
-      - run: flutter build apk --release
+      - name: Build release APK
+        run: flutter build apk --release --dart-define-from-file=config.json
 
       - uses: actions/upload-artifact@v4
         with:
