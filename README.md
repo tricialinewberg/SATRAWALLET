@@ -160,12 +160,6 @@ A apresentação do pitch está disponível em:
 - **Como acessar:** Baixe todos os arquivos do repositório e abra `satra-pitch.html` em um navegador web
 - **Link online:** Disponível via GitHub Pages ou jsDelivr (veja configuração do repositório)
 
-## Demo do aplicativo
-
-Para visualizar a demo do aplicativo:
-- **Local:** `apresentacao/demo` (arquivo APK)
-- **Como instalar:** Transfira o APK para seu dispositivo Android e instale
-- **Requisitos:** Android 6.0 ou superior com suporte a NFC
 
 ## SDK e Recursos
 
