@@ -137,19 +137,19 @@ class _PendingEscapeRecoveryScreenState extends State<PendingEscapeRecoveryScree
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: const Color(0xFFFDECEC),
+            color: SatraColors.errorBg,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFF3B9B9)),
+            border: Border.all(color: SatraColors.errorBorder),
           ),
           child: const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.warning_rounded, color: Color(0xFFD64545), size: 20),
+              Icon(Icons.warning_rounded, color: SatraColors.error, size: 20),
               SizedBox(width: 10),
               Expanded(
                 child: Text(
                   'Sua carteira de escape foi criada, mas a gravação na chave física ainda não foi confirmada. Grave a chave assim que possível — até lá, essas 12 palavras são a única forma de acessá-la, inclusive durante um escape futuro.',
-                  style: TextStyle(color: Color(0xFF7A1F1F), fontSize: 13, height: 1.3),
+                  style: TextStyle(color: SatraColors.errorDark, fontSize: 13, height: 1.3),
                 ),
               ),
             ],
@@ -163,7 +163,7 @@ class _PendingEscapeRecoveryScreenState extends State<PendingEscapeRecoveryScree
               _resultLabel(_lastResult!),
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _lastResult == NfcWriteResult.success ? const Color(0xFF3FBF6F) : const Color(0xFFD64545),
+                color: _lastResult == NfcWriteResult.success ? SatraColors.success : SatraColors.error,
                 fontWeight: FontWeight.bold,
               ),
             ),
