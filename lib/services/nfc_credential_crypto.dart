@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:bip39_plus/bip39_plus.dart' as bip39;
 import 'package:cryptography/cryptography.dart';
 
 /// Versioned, encrypted envelope written to the physical NFC recovery key,
@@ -38,6 +39,13 @@ class NfcCredentialCrypto {
   static const _defaultKdfIterations = 3;
   static const _defaultKdfParallelism = 1;
   static const _keyLength = 32; // AES-256
+  static const _minKdfMemory = 8192;
+  static const _maxKdfMemory = 65536;
+  static const _minKdfIterations = 2;
+  static const _maxKdfIterations = 10;
+  static const _minKdfParallelism = 1;
+  static const _maxKdfParallelism = 4;
+  static const _maxEnvelopeLength = 16 * 1024;
 
   static final AesGcm _cipher = AesGcm.with256bits();
 
@@ -112,11 +120,14 @@ class NfcCredentialCrypto {
       final salt = base64Decode(map['salt'] as String);
       final nonce = base64Decode(map['nonce'] as String);
       final ciphertextWithTag = base64Decode(map['ciphertext'] as String);
-      if (ciphertextWithTag.length < _macLength) throw const NfcCredentialException();
+      if (ciphertextWithTag.length < _macLength) {
+        throw const NfcCredentialException();
+      }
 
       final memory = map['kdfMemory'] as int? ?? _defaultKdfMemory;
       final iterations = map['kdfIterations'] as int? ?? _defaultKdfIterations;
-      final parallelism = map['kdfParallelism'] as int? ?? _defaultKdfParallelism;
+      final parallelism =
+          map['kdfParallelism'] as int? ?? _defaultKdfParallelism;
 
       final secretKey = await Argon2id(
         parallelism: parallelism,
@@ -128,10 +139,15 @@ class NfcCredentialCrypto {
       final splitIndex = ciphertextWithTag.length - _macLength;
       final cipherBytes = ciphertextWithTag.sublist(0, splitIndex);
       final macBytes = ciphertextWithTag.sublist(splitIndex);
-      final secretBox = SecretBox(cipherBytes, nonce: nonce, mac: Mac(macBytes));
+      final secretBox =
+          SecretBox(cipherBytes, nonce: nonce, mac: Mac(macBytes));
 
       final clearBytes = await _cipher.decrypt(secretBox, secretKey: secretKey);
-      return utf8.decode(clearBytes);
+      final mnemonic = utf8.decode(clearBytes).trim();
+      if (!bip39.validateMnemonic(mnemonic)) {
+        throw const NfcCredentialException();
+      }
+      return mnemonic;
     } on NfcCredentialException {
       rethrow;
     } catch (_) {
@@ -143,6 +159,7 @@ class NfcCredentialCrypto {
   }
 
   static Map<String, dynamic>? _decodeEnvelopeMap(String rawText) {
+    if (rawText.length > _maxEnvelopeLength) return null;
     final decoded = jsonDecode(rawText);
     if (decoded is! Map<String, dynamic>) return null;
     if (decoded['version'] != currentVersion) return null;
@@ -152,12 +169,29 @@ class NfcCredentialCrypto {
     if (decoded['salt'] is! String) return null;
     if (decoded['nonce'] is! String) return null;
     if (decoded['ciphertext'] is! String) return null;
+    final memory = decoded['kdfMemory'];
+    final iterations = decoded['kdfIterations'];
+    final parallelism = decoded['kdfParallelism'];
+    if (memory is! int || memory < _minKdfMemory || memory > _maxKdfMemory) {
+      return null;
+    }
+    if (iterations is! int ||
+        iterations < _minKdfIterations ||
+        iterations > _maxKdfIterations) {
+      return null;
+    }
+    if (parallelism is! int ||
+        parallelism < _minKdfParallelism ||
+        parallelism > _maxKdfParallelism) {
+      return null;
+    }
     return decoded;
   }
 
   static Uint8List _randomBytes(int length) {
     final random = Random.secure();
-    return Uint8List.fromList(List<int>.generate(length, (_) => random.nextInt(256)));
+    return Uint8List.fromList(
+        List<int>.generate(length, (_) => random.nextInt(256)));
   }
 }
 
@@ -168,5 +202,6 @@ class NfcCredentialException implements Exception {
   const NfcCredentialException();
 
   @override
-  String toString() => 'Não foi possível decifrar esta chave com a senha informada.';
+  String toString() =>
+      'Não foi possível decifrar esta chave com a senha informada.';
 }
